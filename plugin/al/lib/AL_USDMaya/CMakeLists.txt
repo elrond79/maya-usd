@@ -9,7 +9,6 @@ list(APPEND AL_usdmaya_headers
         AL/usdmaya/PluginRegister.h
         AL/usdmaya/SelectabilityDB.h
         AL/usdmaya/StageCache.h
-        AL/usdmaya/TransformOperation.h
         AL/usdmaya/TypeIDs.h
         AL/usdmaya/ForwardDeclares.h
         AL/usdmaya/Global.h
@@ -22,7 +21,6 @@ list(APPEND AL_usdmaya_source
         AL/usdmaya/Metadata.cpp
         AL/usdmaya/SelectabilityDB.cpp
         AL/usdmaya/StageCache.cpp
-        AL/usdmaya/TransformOperation.cpp
         AL/usdmaya/CodeTimings.cpp
         AL/usdmaya/moduleDeps.cpp
 )
@@ -176,6 +174,9 @@ target_include_directories(
     ${PXR_INCLUDE_DIRS}
     ${MAYA_INCLUDE_DIRS}
     $<$<BOOL:${UFE_FOUND}>:${UFE_INCLUDE_DIR}>
+    # TODO: install the xformStack stuff into common area, so we don't read out of pxr plugin
+    # only needed for the usdMaya stuff from pixar
+    ${USD_MAYA_INCLUDE_DIR}
 )
 
 set(Boost_LINK_LIBRARIES
@@ -207,6 +208,7 @@ target_link_libraries(${LIBRARY_NAME}
     usdUtils
     usdImaging
     usdImagingGL
+    usdMaya
     vt
     ${Boost_LINK_LIBRARIES}
     ${MAYA_Foundation_LIBRARY}
@@ -281,6 +283,7 @@ if(IS_MACOSX OR IS_LINUX)
     mayaUsd_init_rpath(rpath lib/python/${arDirPath})
     mayaUsd_add_rpath(rpath "${AL_INSTALL_PREFIX}/lib")
     mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/lib")
+    mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/plugin/pxr/maya/lib")
     mayaUsd_install_rpath(rpath ${PYTHON_LIBRARY_NAME})
 endif()
 

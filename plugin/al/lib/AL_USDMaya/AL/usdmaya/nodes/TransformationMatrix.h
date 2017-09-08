@@ -16,7 +16,6 @@
 #pragma once
 
 #include "AL/usdmaya/Api.h"
-#include "AL/usdmaya/TransformOperation.h"
 #include "AL/usdmaya/nodes/BasicTransformationMatrix.h"
 
 #include "maya/MPxTransformationMatrix.h"
@@ -24,7 +23,9 @@
 
 #include "pxr/usd/usdGeom/xformable.h"
 #include "pxr/usd/usdGeom/xformCommonAPI.h"
+#include "mayaUsd/fileio/utils/xformStack.h"
 
+#include <unordered_set>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -49,7 +50,8 @@ class TransformationMatrix
   UsdGeomXformable m_xform;
   UsdTimeCode m_time;
   std::vector<UsdGeomXformOp> m_xformops;
-  std::vector<TransformOperation> m_orderedOps;
+  UsdMayaXformStack::OpClassList m_orderedOps;
+  std::vector<size_t> m_orderedOpMayaIndices;
 
   // tweak values. These are applied on top of the USD transform values to produce the final result.
   MVector m_scaleTweak;
@@ -100,15 +102,15 @@ class TransformationMatrix
   }
 
   // methods that will insert a transform op into the ordered queue of operations, if for some.
-  void insertTranslateOp();
-  void insertScaleOp();
-  void insertShearOp();
-  void insertScalePivotOp();
-  void insertScalePivotTranslationOp();
-  void insertRotateOp();
-  void insertRotatePivotOp();
-  void insertRotatePivotTranslationOp();
-  void insertRotateAxesOp();
+  MStatus insertTranslateOp();
+  MStatus insertScaleOp();
+  MStatus insertShearOp();
+  MStatus insertScalePivotOp();
+  MStatus insertScalePivotTranslationOp();
+  MStatus insertRotateOp();
+  MStatus insertRotatePivotOp();
+  MStatus insertRotatePivotTranslationOp();
+  MStatus insertRotateAxesOp();
 
   enum Flags
   {
@@ -119,9 +121,12 @@ class TransformationMatrix
     kAnimatedMatrix = 1 << 3,
     kAnimatedShear = 1 << 4,
 
-    // are the transform ops coming from a matrix, the PXR schema, or from the maya schema (no flags set)
+    // are the transform ops coming from a matrix, the maya schema, the common schema,
+    // or none of the above (no flags set)?
     kFromMatrix = 1 << 8,
     kFromMayaSchema = 1 << 9,
+    kFromCommonSchema = 1 << 10,
+    kAnyKnownSchema = kFromMatrix | kFromMayaSchema | kFromCommonSchema,
 
     // which transform components are present in the prim?
     kPrimHasScale = 1 << 16,
@@ -150,6 +155,19 @@ class TransformationMatrix
     kPreservationMask = kPushToPrimEnabled | kReadAnimatedValues
   };
   uint32_t m_flags = kReadAnimatedValues;
+
+  /// Used to populate m_orderedOpMayaIndices when it is actually needed
+  /// (since many / most xforms will never be altered, would be waste to
+  /// do this for all xforms)
+  void buildOrderedOpMayaIndices();
+
+  // Used by various insert*Op methods
+  MStatus insertOp(
+      UsdGeomXformOp::Type opType,
+      UsdGeomXformOp::Precision precision,
+      const TfToken& opName,
+      Flags newFlag,
+      bool insertAtBeginning=false);
 
   bool internal_readVector(MVector& result, const UsdGeomXformOp& op) { return readVector(result, op, getTimeCode()); }
   bool internal_readShear(MVector& result, const UsdGeomXformOp& op) { return readShear(result, op, getTimeCode()); }
@@ -313,8 +331,11 @@ class TransformationMatrix
 
   void notifyProxyShapeOfRedraw();
 
-  /// \brief  sets the SRT values from a matrix
+  /// \brief  sets this xform to match the given matrix
   void setFromMatrix(MObject thisNode, const MMatrix& m);
+
+  /// \brief  sets this xform to match the local transformation matrix read from the m_prim
+  void setFromPrimMatrix(MObject thisNode);
 
   //  Translation methods:
   MStatus translateTo(const MVector &vector, MSpace::Space = MSpace::kTransform) override;
@@ -468,7 +489,7 @@ public:
 
   /// \brief  Is this transform set to write back onto the USD prim, and is it currently possible?
   bool pushToPrimAvailable() const override
-    { return pushToPrimEnabled() && m_prim.IsValid(); }
+    { return pushToPrimEnabled() && m_prim.IsValid() && (m_flags & kAnyKnownSchema); }
 
   //--------------------------------------------------------------------------------------------------------------------
   /// \name  Convert To-From USD primitive
@@ -482,6 +503,8 @@ public:
   /// \param  readFromPrim if true, the maya attribute values will be updated from those found on the USD prim
   /// \param  node the transform node to which this matrix belongs (and where the USD prim will be extracted from)
   void initialiseToPrim(bool readFromPrim = true, Scope* node = 0) override;
+
+private:
 
   void pushTranslateToPrim();
   void pushPivotToPrim();

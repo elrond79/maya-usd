@@ -14,6 +14,7 @@
 // limitations under the License.
 //
 
+#include "AL/maya/utils/MayaHelperMacros.h"
 #include "AL/usdmaya/TypeIDs.h"
 #include "AL/usdmaya/DebugCodes.h"
 #include "AL/usdmaya/nodes/ProxyShape.h"
@@ -23,6 +24,7 @@
 #include "AL/usdmaya/utils/Utils.h"
 
 #include "maya/MFileIO.h"
+#include "maya/MGlobal.h"
 #include "maya/MViewport2Renderer.h"
 #include "maya/MFnTransform.h"
 
@@ -559,6 +561,38 @@ void TransformationMatrix::setFromMatrix(MObject thisNode, const MMatrix& m)
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+void TransformationMatrix::setFromPrimMatrix(MObject thisNode)
+{
+  if (!m_xform)
+  {
+    TF_WARN("Cannot set TransformationMatrix from usd prim if m_xform not set");
+    return;
+  }
+
+  GfMatrix4d matrix;
+  bool resetsXformStack;
+
+  // Note that if GetLocalTransformation returns false, it may just be because
+  // underlying prim has no xformOps defined at all...
+  if(m_xform.GetLocalTransformation(&matrix, &resetsXformStack, getTimeCode()))
+  {
+    MMatrix mayaMatrix;
+    // maya matrices and pxr matrices share same ordering, so can copy directly into MMatrix's storage
+    matrix.Get(mayaMatrix.matrix);
+
+    setFromMatrix(thisNode, mayaMatrix);
+    if(resetsXformStack)
+    {
+      m_flags &= ~kInheritsTransform;
+    }
+    else
+    {
+      m_flags |= kInheritsTransform;
+    }
+  }
+}
+
+//----------------------------------------------------------------------------------------------------------------------
 bool TransformationMatrix::pushPoint(const MPoint& result, UsdGeomXformOp& op, UsdTimeCode timeCode)
 {
   TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::pushPoint %f %f %f\n%s\n", result.x, result.y, result.z, op.GetOpName().GetText());
@@ -924,27 +958,46 @@ bool TransformationMatrix::pushRotation(const MEulerRotation& value, UsdGeomXfor
 //----------------------------------------------------------------------------------------------------------------------
 void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformNode)
 {
-  TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::initialiseToPrim\n");
-
   // if not yet initialized, do not execute this code! (It will crash!).
-  if(!m_prim)
+  if(!m_prim || !m_xform)
     return;
+
+  TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::initialiseToPrim: %s\n",
+      m_prim.GetPath().GetText());
 
   bool resetsXformStack = false;
   m_xformops = m_xform.GetOrderedXformOps(&resetsXformStack);
-  m_orderedOps.resize(m_xformops.size());
+  m_orderedOps.clear();
+  m_orderedOpMayaIndices.clear();
 
   if(!resetsXformStack)
   {
     m_flags |= kInheritsTransform;
   }
 
-  if(matchesMayaProfile(m_xformops.begin(), m_xformops.end(), m_orderedOps.begin()))
+  if (m_xformops.empty())
   {
+    // An empty xform matches anything, so we'll say it matches maya...
     m_flags |= kFromMayaSchema;
   }
   else
   {
+    static const std::pair<const UsdMayaXformStack&, uint32_t> stackFlagPairs[3] = {
+        {UsdMayaXformStack::MayaStack(), kFromMayaSchema},
+        {UsdMayaXformStack::CommonStack(), kFromCommonSchema},
+        {UsdMayaXformStack::MatrixStack(), kFromMatrix},
+    };
+    for (const auto& stackFlagPair : stackFlagPairs)
+    {
+      const auto& stack = stackFlagPair.first;
+      const auto flag = stackFlagPair.second;
+      m_orderedOps = stack.MatchingSubstack(m_xformops);
+      if (!m_orderedOps.empty())
+      {
+        m_flags |= flag;
+        break;
+      }
+    }
   }
 
   {
@@ -961,13 +1014,17 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
     // 
     Scoped_DisablePushToPrim disableNow(*this);
 
-    auto opIt = m_orderedOps.begin();
-    for(std::vector<UsdGeomXformOp>::const_iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
+    if(m_flags & kAnyKnownSchema)
     {
-      const UsdGeomXformOp& op = *it;
-      switch(*opIt)
+      auto opIt = m_orderedOps.begin();
+      for(std::vector<UsdGeomXformOp>::const_iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
       {
-      case kTranslate:
+        const UsdMayaXformOpClassification& opClass = *opIt;
+        if (opClass.IsInvertedTwin()) continue;
+
+        const UsdGeomXformOp& op = *it;
+        const TfToken& opName = opClass.GetName();
+        if (opName == UsdMayaXformStackTokens->translate)
         {
           m_flags |= kPrimHasTranslation;
           if(op.GetNumTimeSamples() > 1)
@@ -977,7 +1034,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
           if(readFromPrim)
           {
             MVector tempTranslation;
-            internal_readVector(tempTranslation, op);	
+            internal_readVector(tempTranslation, op); 
             if(transformNode)
             {
               MPlug(transformNode->thisMObject(), MPxTransform::translateX).setValue(tempTranslation.x);
@@ -988,9 +1045,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
             }
           }
         }
-        break;
-
-      case kPivot:
+        else if (opName == UsdMayaXformStackTokens->pivot)
         {
           m_flags |= kPrimHasPivot;
           if(readFromPrim)
@@ -1008,9 +1063,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
             }
           }
         }
-        break;
-
-      case kRotatePivotTranslate:
+        else if (opName == UsdMayaXformStackTokens->rotatePivotTranslate)
         {
           m_flags |= kPrimHasRotatePivotTranslate;
           if(readFromPrim)
@@ -1024,9 +1077,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
             }
           }
         }
-        break;
-
-      case kRotatePivot:
+        else if (opName == UsdMayaXformStackTokens->rotatePivot)
         {
           m_flags |= kPrimHasRotatePivot;
           if(readFromPrim)
@@ -1040,9 +1091,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
             }
           }
         }
-        break;
-
-      case kRotate:
+        else if (opName == UsdMayaXformStackTokens->rotate)
         {
           m_flags |= kPrimHasRotation;
           if(op.GetNumTimeSamples() > 1)
@@ -1062,9 +1111,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
             }
           }
         }
-        break;
-
-      case kRotateAxis:
+        else if (opName == UsdMayaXformStackTokens->rotateAxis)
         {
           m_flags |= kPrimHasRotateAxes;
           if(readFromPrim) {
@@ -1079,14 +1126,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
             }
           }
         }
-        break;
-
-      case kRotatePivotInv:
-        {
-        }
-        break;
-
-      case kScalePivotTranslate:
+        else if (opName == UsdMayaXformStackTokens->scalePivotTranslate)
         {
           m_flags |= kPrimHasScalePivotTranslate;
           if(readFromPrim)
@@ -1100,9 +1140,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
             }
           }
         }
-        break;
-
-      case kScalePivot:
+        else if (opName == UsdMayaXformStackTokens->scalePivot)
         {
           m_flags |= kPrimHasScalePivot;
           if(readFromPrim)
@@ -1116,9 +1154,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
             }
           }
         }
-        break;
-
-      case kShear:
+        else if (opName == UsdMayaXformStackTokens->shear)
         {
           m_flags |= kPrimHasShear;
           if(op.GetNumTimeSamples() > 1)
@@ -1128,7 +1164,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
           if(readFromPrim)
           {
             MVector tempShear;
-            internal_readShear(tempShear, op);	
+            internal_readShear(tempShear, op);    
             if(transformNode)
             {
               MPlug(transformNode->thisMObject(), MPxTransform::shearXY).setValue(tempShear.x);
@@ -1139,9 +1175,7 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
             }
           }
         }
-        break;
-
-      case kScale:
+        else if (opName == UsdMayaXformStackTokens->scale)
         {
           m_flags |= kPrimHasScale;
           if(op.GetNumTimeSamples() > 1)
@@ -1160,21 +1194,9 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
               m_scaleTweak[0] = m_scaleTweak[1] = m_scaleTweak[2] = 0;
               m_scaleFromUsd = tempScale;
             }
-          } 
+          }
         }
-        break;
-
-      case kScalePivotInv:
-        {
-        }
-        break;
-
-      case kPivotInv:
-        {
-        }
-        break;
-
-      case kTransform:
+        else if (opName == UsdMayaXformStackTokens->transform)
         {
           m_flags |= kPrimHasTransform;
           m_flags |= kFromMatrix;
@@ -1187,16 +1209,28 @@ void TransformationMatrix::initialiseToPrim(bool readFromPrim, Scope* transformN
           if(readFromPrim)
           {
             MMatrix m;
-            internal_readMatrix(m, op);
-            setFromMatrix(transformNode->thisMObject(), m);
+            internal_readMatrix(m, m_xformops[0]);
+            if (transformNode)
+            {
+              setFromMatrix(transformNode->thisMObject(), m);
+            }
           }
         }
-        break;
-
-      case kUnknownOp:
+        else
         {
+          std::cerr << "TransformationMatrix::initialiseToPrim - Invalid transform operation: " << opName.GetText() << std::endl;
         }
-        break;
+
+      }
+      assert(m_orderedOps.size() == m_xformops.size());
+    }
+    else
+    {
+      TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::initialiseToPrim - prim xform ops did not match any known"
+          " xformStack: %s\n", m_prim.GetPath().GetText());
+      if (transformNode)
+      {
+        setFromPrimMatrix(transformNode->thisMObject());
       }
     }
 
@@ -1223,104 +1257,230 @@ void TransformationMatrix::updateToTime(const UsdTimeCode& time)
   if(m_time != time)
   {
     m_time = time;
+    if (m_flags & kAnyKnownSchema)
     {
+      assert(m_orderedOps.size() == m_xformops.size());
       auto opIt = m_orderedOps.begin();
       for(std::vector<UsdGeomXformOp>::const_iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
       {
         const UsdGeomXformOp& op = *it;
-        switch(*opIt)
+        const TfToken& opName = opIt->GetName();
+        if (opName == UsdMayaXformStackTokens->translate)
         {
-        case kTranslate:
+          if(op.GetNumTimeSamples() >= 1)
           {
-            if(op.GetNumTimeSamples() >= 1)
-            {
-              m_flags |= kAnimatedTranslation;
-              internal_readVector(m_translationFromUsd, op);
-              MPxTransformationMatrix::translationValue = m_translationFromUsd + m_translationTweak;
-            }
+            m_flags |= kAnimatedTranslation;
+            internal_readVector(m_translationFromUsd, op);
+            MPxTransformationMatrix::translationValue = m_translationFromUsd + m_translationTweak;
           }
-          break;
-
-        case kRotate:
-          {
-            if(op.GetNumTimeSamples() >= 1)
-            {
-              m_flags |= kAnimatedRotation;
-              internal_readRotation(m_rotationFromUsd, op);
-              MPxTransformationMatrix::rotationValue = m_rotationFromUsd;
-              MPxTransformationMatrix::rotationValue.x += m_rotationTweak.x;
-              MPxTransformationMatrix::rotationValue.y += m_rotationTweak.y;
-              MPxTransformationMatrix::rotationValue.z += m_rotationTweak.z;
-            }
-          }
-          break;
-
-        case kScale:
-          {
-            if(op.GetNumTimeSamples() >= 1)
-            {
-              m_flags |= kAnimatedScale;
-              internal_readVector(m_scaleFromUsd, op);
-              MPxTransformationMatrix::scaleValue = m_scaleFromUsd + m_scaleTweak;
-            }
-          }
-          break;
-
-        case kShear:
-          {
-            if(op.GetNumTimeSamples() >= 1)
-            {
-              m_flags |= kAnimatedShear;
-              internal_readShear(m_shearFromUsd, op);
-              MPxTransformationMatrix::shearValue = m_shearFromUsd + m_shearTweak;
-            }
-          }
-          break;
-
-        case kTransform:
-          {
-            if(op.GetNumTimeSamples() >= 1)
-            {
-              m_flags |= kAnimatedMatrix;
-              GfMatrix4d matrix;
-              op.Get<GfMatrix4d>(&matrix, getTimeCode());
-              double T[3], S[3];
-              AL::usdmaya::utils::matrixToSRT(matrix, S, m_rotationFromUsd, T);
-              m_scaleFromUsd.x = S[0];
-              m_scaleFromUsd.y = S[1];
-              m_scaleFromUsd.z = S[2];
-              m_translationFromUsd.x = T[0];
-              m_translationFromUsd.y = T[1];
-              m_translationFromUsd.z = T[2];
-              MPxTransformationMatrix::rotationValue.x = m_rotationFromUsd.x + m_rotationTweak.x;
-              MPxTransformationMatrix::rotationValue.y = m_rotationFromUsd.y + m_rotationTweak.y;
-              MPxTransformationMatrix::rotationValue.z = m_rotationFromUsd.z + m_rotationTweak.z;
-              MPxTransformationMatrix::translationValue = m_translationFromUsd + m_translationTweak;
-              MPxTransformationMatrix::scaleValue = m_scaleFromUsd + m_scaleTweak;
-            }
-          }
-          break;
-
-        default:
-          break;
         }
+        else if (opName == UsdMayaXformStackTokens->rotate)
+        {
+          if(op.GetNumTimeSamples() >= 1)
+          {
+            m_flags |= kAnimatedRotation;
+            internal_readRotation(m_rotationFromUsd, op);
+            MPxTransformationMatrix::rotationValue = m_rotationFromUsd;
+            MPxTransformationMatrix::rotationValue.x += m_rotationTweak.x;
+            MPxTransformationMatrix::rotationValue.y += m_rotationTweak.y;
+            MPxTransformationMatrix::rotationValue.z += m_rotationTweak.z;
+          }
+        }
+        else if (opName == UsdMayaXformStackTokens->scale)
+        {
+          if(op.GetNumTimeSamples() >= 1)
+          {
+            m_flags |= kAnimatedScale;
+            internal_readVector(m_scaleFromUsd, op);
+            MPxTransformationMatrix::scaleValue = m_scaleFromUsd + m_scaleTweak;
+          }
+        }
+        else if (opName == UsdMayaXformStackTokens->shear)
+        {
+          if(op.GetNumTimeSamples() >= 1)
+          {
+            m_flags |= kAnimatedShear;
+            internal_readShear(m_shearFromUsd, op);
+            MPxTransformationMatrix::shearValue = m_shearFromUsd + m_shearTweak;
+          }
+        }
+        else if (opName == UsdMayaXformStackTokens->transform)
+        {
+          if(op.GetNumTimeSamples() >= 1)
+          {
+            m_flags |= kAnimatedMatrix;
+            GfMatrix4d matrix;
+            op.Get<GfMatrix4d>(&matrix, getTimeCode());
+            double T[3], S[3];
+            AL::usdmaya::utils::matrixToSRT(matrix, S, m_rotationFromUsd, T);
+            m_scaleFromUsd.x = S[0];
+            m_scaleFromUsd.y = S[1];
+            m_scaleFromUsd.z = S[2];
+            m_translationFromUsd.x = T[0];
+            m_translationFromUsd.y = T[1];
+            m_translationFromUsd.z = T[2];
+            MPxTransformationMatrix::rotationValue.x = m_rotationFromUsd.x + m_rotationTweak.x;
+            MPxTransformationMatrix::rotationValue.y = m_rotationFromUsd.y + m_rotationTweak.y;
+            MPxTransformationMatrix::rotationValue.z = m_rotationFromUsd.z + m_rotationTweak.z;
+            MPxTransformationMatrix::translationValue = m_translationFromUsd + m_translationTweak;
+            MPxTransformationMatrix::scaleValue = m_scaleFromUsd + m_scaleTweak;
+          }
+        }
+      }
+    }
+    else
+    {
+      MObject thisObj = m_transformNode.object();
+      if (!thisObj.isNull())
+      {
+        setFromPrimMatrix(thisObj);
       }
     }
   }
 }
 
+void TransformationMatrix::buildOrderedOpMayaIndices()
+{
+  if (m_orderedOpMayaIndices.empty() && !m_orderedOps.empty())
+  {
+    // fill out m_orderedOpMayaIndices, so we know where to insert stuff
+    if (m_flags & kFromMayaSchema)
+    {
+      const auto& mayaStack = UsdMayaXformStack::MayaStack();
+      m_orderedOpMayaIndices.reserve(m_orderedOps.size());
+      for(auto& op : m_orderedOps)
+      {
+        m_orderedOpMayaIndices.push_back(mayaStack.FindOpIndex(op.GetName(), op.IsInvertedTwin()));
+      }
+    }
+    else if (m_flags & kFromMayaSchema)
+    {
+      const auto& mayaStack = UsdMayaXformStack::MayaStack();
+      m_orderedOpMayaIndices.reserve(m_orderedOps.size());
+      for(auto& op : m_orderedOps)
+      {
+        // The only op in the common stack that has a different name than in the maya stack
+        // is the "pivot" op - for that, we consider the non-inverted version to have the same
+        // place as non-inverted rotatePivot, and the inverted version to have the same place
+        // s the inverted scalePivot, since that will give the same xform if we guarantee that
+        // rotatePivot == scalePivot... which we do
+        TfToken name = op.GetName();
+        bool isInverted = op.IsInvertedTwin();
+        if (name == UsdMayaXformStackTokens->pivot)
+        {
+          if (isInverted)
+          {
+            name = UsdMayaXformStackTokens->scalePivot;
+          }
+          else
+          {
+            name = UsdMayaXformStackTokens->rotatePivot;
+          }
+        }
+        m_orderedOpMayaIndices.push_back(mayaStack.FindOpIndex(name, isInverted));
+      }
+    }
+  }
+}
+
+MStatus TransformationMatrix::insertOp(
+    UsdGeomXformOp::Type opType,
+    UsdGeomXformOp::Precision precision,
+    const TfToken& opName,
+    Flags newFlag,
+    bool insertAtBeginning)
+{
+  TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertOp - %s\n", opName.GetText());
+
+  // Build out the m_orderedOpMayaIndices so we know where to insert things - delayed
+  // till now, since most xforms won't be altered / have ops inserted, and won't need this
+  buildOrderedOpMayaIndices();
+
+  // If we currently have a singular "pivot" op, and we're trying to insert a rotatePivot or
+  // scalePivot, first see if it's actually necessary, and if so, "convert" our op stack to use
+  // split rotatePivot and scalePivot
+
+
+  // Find an iterator pointing to the location in m_orderedOps where the given
+  // maya operator should be inserted. Note that opIndex must refer to an entry in MayaStack
+  // (not CommonStack, etc)
+  auto findOpInsertPos = [&](size_t opIndex) -> int {
+
+    assert(opIndex != UsdMayaXformStack::NO_INDEX);
+    assert(opIndex < UsdMayaXformStack::MayaStack().GetOps().size());
+
+    auto indexIter = std::lower_bound(m_orderedOpMayaIndices.begin(),
+        m_orderedOpMayaIndices.end(), opIndex);
+    return indexIter - m_orderedOpMayaIndices.begin();
+  };
+
+  auto addOp = [&](
+      size_t opIndex,
+      bool insertAtBeginning) -> int {
+    assert(opIndex != UsdMayaXformStack::NO_INDEX);
+
+    auto& mayaStack = UsdMayaXformStack::MayaStack();
+    const UsdMayaXformOpClassification& opClass = mayaStack[opIndex];
+    UsdGeomXformOp op = m_xform.AddXformOp(opType, precision, opName, opClass.IsInvertedTwin());
+    if (!op)
+    {
+      return -1;
+    }
+
+    // insert our op into the correct stack location
+    auto insertIndex = insertAtBeginning ? 0 : findOpInsertPos(opIndex);
+    m_orderedOps.insert(m_orderedOps.begin() + insertIndex, opClass);
+    m_xformops.insert(m_xformops.begin() + insertIndex, op);
+    m_orderedOpMayaIndices.insert(m_orderedOpMayaIndices.begin() + insertIndex, opIndex);
+
+    assert(m_orderedOps.size() == m_xformops.size());
+
+    return insertIndex;
+  };
+
+  const UsdMayaXformStack::IndexPair& opPair = UsdMayaXformStack::MayaStack().FindOpIndexPair(opName);
+
+  // Add the second first, so that if insertAtBeginning is true, they will
+  // maintain the same order
+  auto secondPos = -1;
+  if (opPair.second != UsdMayaXformStack::NO_INDEX)
+  {
+    secondPos = addOp(opPair.second, insertAtBeginning);
+    if (secondPos == -1)
+    {
+      return MStatus::kFailure;
+    }
+  }
+  auto firstPos = addOp(opPair.first, insertAtBeginning);
+  if (firstPos == -1)
+  {
+    if (opPair.second != UsdMayaXformStack::NO_INDEX && secondPos != -1)
+    {
+      // Undo the insertion of the other pair if something went wrong
+      m_orderedOps.erase(m_orderedOps.begin() + secondPos);
+      m_xformops.erase(m_xformops.begin() + secondPos);
+      m_orderedOpMayaIndices.erase(m_orderedOpMayaIndices.begin() + secondPos);
+
+      assert(m_orderedOps.size() == m_xformops.size());
+    }
+    return MStatus::kFailure;
+  }
+  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
+  m_flags |= newFlag;
+  return MStatus::kSuccess;
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // Translation
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::insertTranslateOp()
+MStatus TransformationMatrix::insertTranslateOp()
 {
   TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertTranslateOp\n");
-  // generate our translate op, and insert into the correct stack location
-  UsdGeomXformOp op = m_xform.AddTranslateOp(UsdGeomXformOp::PrecisionFloat, TfToken("translate"));
-  m_xformops.insert(m_xformops.begin(), op);
-  m_orderedOps.insert(m_orderedOps.begin(), kTranslate);
-  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
-  m_flags |= kPrimHasTranslation;
+  return insertOp(UsdGeomXformOp::TypeTranslate, UsdGeomXformOp::PrecisionFloat,
+      UsdMayaXformStackTokens->translate, kPrimHasTranslation,
+      // insertAtBeginning, because we know translate is always first in the stack,
+      // so we can save a little time
+      true);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1346,7 +1506,7 @@ MStatus TransformationMatrix::translateTo(const MVector& vector, MSpace::Space s
     else
     if(!pushPrimToMatrix() && vector != MVector(0.0, 0.0, 0.0))
     {
-      insertTranslateOp();
+      AL_MAYA_CHECK_ERROR(insertTranslateOp(), "error inserting Translate op");
     }
 
     // Push new value to prim, but only if it's changing, otherwise extra work and unintended
@@ -1363,20 +1523,12 @@ MStatus TransformationMatrix::translateTo(const MVector& vector, MSpace::Space s
 //----------------------------------------------------------------------------------------------------------------------
 // Scale
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::insertScaleOp()
+MStatus TransformationMatrix::insertScaleOp()
 {
   TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertScaleOp\n");
 
-  // generate our translate op, and insert into the correct stack location
-  UsdGeomXformOp op = m_xform.AddScaleOp(UsdGeomXformOp::PrecisionFloat, TfToken("scale"));
-
-  auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kScale);
-  auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-
-  m_xformops.insert(posInXfm, op);
-  m_orderedOps.insert(posInOps, kScale);
-  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
-  m_flags |= kPrimHasScale;
+  return insertOp(UsdGeomXformOp::TypeScale, UsdGeomXformOp::PrecisionFloat,
+      UsdMayaXformStackTokens->scale, kPrimHasScale);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1401,7 +1553,7 @@ MStatus TransformationMatrix::scaleTo(const MVector& scale, MSpace::Space space)
     if(!pushPrimToMatrix() && scale != MVector(1.0, 1.0, 1.0))
     {
       // rare case: add a new scale op into the prim
-      insertScaleOp();
+      AL_MAYA_CHECK_ERROR(insertScaleOp(), "error inserting Scale op");
     }
     // Push new value to prim, but only if it's changing.
     if (!scale.isEquivalent(m_scaleFromUsd))
@@ -1415,19 +1567,11 @@ MStatus TransformationMatrix::scaleTo(const MVector& scale, MSpace::Space space)
 //----------------------------------------------------------------------------------------------------------------------
 // Shear
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::insertShearOp()
+MStatus TransformationMatrix::insertShearOp()
 {
   TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertShearOp\n");
-  // generate our translate op, and insert into the correct stack location
-  UsdGeomXformOp op = m_xform.AddTransformOp(UsdGeomXformOp::PrecisionDouble, TfToken("shear"));
-
-  auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kShear);
-  auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-
-  m_xformops.insert(posInXfm, op);
-  m_orderedOps.insert(posInOps, kShear);
-  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
-  m_flags |= kPrimHasShear;
+  return insertOp(UsdGeomXformOp::TypeTransform, UsdGeomXformOp::PrecisionDouble,
+      UsdMayaXformStackTokens->shear, kPrimHasShear);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1451,7 +1595,7 @@ MStatus TransformationMatrix::shearTo(const MVector& shear, MSpace::Space space)
     if(!pushPrimToMatrix() && shear != MVector(0.0, 0.0, 0.0))
     {
       // rare case: add a new scale op into the prim
-      insertShearOp();
+      AL_MAYA_CHECK_ERROR(insertShearOp(), "error inserting Shear op");
     }
     // Push new value to prim, but only if it's changing.
     if (!shear.isEquivalent(m_shearFromUsd))
@@ -1463,27 +1607,11 @@ MStatus TransformationMatrix::shearTo(const MVector& shear, MSpace::Space space)
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::insertScalePivotOp()
+MStatus TransformationMatrix::insertScalePivotOp()
 {
   TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertScalePivotOp\n");
-  // generate our translate op, and insert into the correct stack location
-  UsdGeomXformOp op = m_xform.AddTranslateOp(UsdGeomXformOp::PrecisionFloat, TfToken("scalePivot"));
-  UsdGeomXformOp opinv = m_xform.AddTranslateOp(UsdGeomXformOp::PrecisionFloat, TfToken("scalePivot"), true);
-
-  {
-    auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kScalePivot);
-    auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-    m_xformops.insert(posInXfm, op);
-    m_orderedOps.insert(posInOps, kScalePivot);
-  }
-  {
-    auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kScalePivotInv);
-    auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-    m_xformops.insert(posInXfm, opinv);
-    m_orderedOps.insert(posInOps, kScalePivotInv);
-  }
-  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
-  m_flags |= kPrimHasScalePivot;
+  return insertOp(UsdGeomXformOp::TypeTranslate, UsdGeomXformOp::PrecisionFloat,
+      UsdMayaXformStackTokens->scalePivot, kPrimHasScalePivot);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1504,7 +1632,7 @@ MStatus TransformationMatrix::setScalePivot(const MPoint& sp, MSpace::Space spac
     else
     if(!pushPrimToMatrix() && sp != MPoint(0.0, 0.0, 0.0))
     {
-      insertScalePivotOp();
+      AL_MAYA_CHECK_ERROR(insertScalePivotOp(), "error inserting ScalePivot op");
     }
     // Push new value to prim, but only if it's changing.
     if (!sp.isEquivalent(m_scalePivotFromUsd))
@@ -1516,19 +1644,11 @@ MStatus TransformationMatrix::setScalePivot(const MPoint& sp, MSpace::Space spac
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::insertScalePivotTranslationOp()
+MStatus TransformationMatrix::insertScalePivotTranslationOp()
 {
   TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertScalePivotTranslationOp\n");
-  // generate our translate op, and insert into the correct stack location
-  UsdGeomXformOp op = m_xform.AddTranslateOp(UsdGeomXformOp::PrecisionFloat, TfToken("scalePivotTranslate"));
-
-  auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kScalePivotTranslate);
-  auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-
-  m_xformops.insert(posInXfm, op);
-  m_orderedOps.insert(posInOps, kScalePivotTranslate);
-  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
-  m_flags |= kPrimHasScalePivotTranslate;
+  return insertOp(UsdGeomXformOp::TypeTranslate, UsdGeomXformOp::PrecisionFloat,
+      UsdMayaXformStackTokens->scalePivotTranslate, kPrimHasScalePivotTranslate);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1548,7 +1668,7 @@ MStatus TransformationMatrix::setScalePivotTranslation(const MVector& sp, MSpace
     else
     if(!pushPrimToMatrix() && sp != MVector(0.0, 0.0, 0.0))
     {
-      insertScalePivotTranslationOp();
+      AL_MAYA_CHECK_ERROR(insertScalePivotTranslationOp(), "error inserting ScalePivotTranslation op");
     }
     // Push new value to prim, but only if it's changing.
     if (!sp.isEquivalent(m_scalePivotTranslationFromUsd))
@@ -1560,27 +1680,11 @@ MStatus TransformationMatrix::setScalePivotTranslation(const MVector& sp, MSpace
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::insertRotatePivotOp()
+MStatus TransformationMatrix::insertRotatePivotOp()
 {
   TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertRotatePivotOp\n");
-  // generate our translate op, and insert into the correct stack location
-  UsdGeomXformOp op = m_xform.AddTranslateOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotatePivot"));
-  UsdGeomXformOp opinv = m_xform.AddTranslateOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotatePivot"), true);
-
-  {
-    auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kRotatePivot);
-    auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-    m_xformops.insert(posInXfm, op);
-    m_orderedOps.insert(posInOps, kRotatePivot);
-  }
-  {
-    auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kRotatePivotInv);
-    auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-    m_xformops.insert(posInXfm, opinv);
-    m_orderedOps.insert(posInOps, kRotatePivotInv);
-  }
-  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
-  m_flags |= kPrimHasRotatePivot;
+  return insertOp(UsdGeomXformOp::TypeTranslate, UsdGeomXformOp::PrecisionFloat,
+      UsdMayaXformStackTokens->rotatePivot, kPrimHasRotatePivot);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1601,7 +1705,7 @@ MStatus TransformationMatrix::setRotatePivot(const MPoint& pivot, MSpace::Space 
     else
     if(!pushPrimToMatrix() && pivot != MPoint(0.0, 0.0, 0.0))
     {
-      insertRotatePivotOp();
+      AL_MAYA_CHECK_ERROR(insertRotatePivotOp(), "error inserting RotatePivot op");
     }
     // Push new value to prim, but only if it's changing.
     if (!pivot.isEquivalent(m_rotatePivotFromUsd))
@@ -1613,19 +1717,10 @@ MStatus TransformationMatrix::setRotatePivot(const MPoint& pivot, MSpace::Space 
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::insertRotatePivotTranslationOp()
+MStatus TransformationMatrix::insertRotatePivotTranslationOp()
 {
-  TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertRotatePivotTranslationOp\n");
-  // generate our translate op, and insert into the correct stack location
-  UsdGeomXformOp op = m_xform.AddTranslateOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotatePivotTranslate"));
-
-  auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kRotatePivotTranslate);
-  auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-
-  m_xformops.insert(posInXfm, op);
-  m_orderedOps.insert(posInOps, kRotatePivotTranslate);
-  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
-  m_flags |= kPrimHasRotatePivotTranslate;
+  return insertOp(UsdGeomXformOp::TypeTranslate, UsdGeomXformOp::PrecisionFloat,
+      UsdMayaXformStackTokens->rotatePivotTranslate, kPrimHasRotatePivotTranslate);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1645,7 +1740,7 @@ MStatus TransformationMatrix::setRotatePivotTranslation(const MVector &vector, M
     else
     if(!pushPrimToMatrix() && vector != MVector(0.0, 0.0, 0.0))
     {
-      insertRotatePivotTranslationOp();
+      AL_MAYA_CHECK_ERROR(insertRotatePivotTranslationOp(), "error inserting RotatePivotTranslation op");
     }
     // Push new value to prim, but only if it's changing.
     if (!vector.isEquivalent(m_rotatePivotTranslationFromUsd))
@@ -1657,52 +1752,43 @@ MStatus TransformationMatrix::setRotatePivotTranslation(const MVector &vector, M
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::insertRotateOp()
+MStatus TransformationMatrix::insertRotateOp()
 {
-  TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertRotateOp\n");
-  // generate our translate op, and insert into the correct stack location
-  UsdGeomXformOp op;
-
+  UsdGeomXformOp::Type opType;
   switch(rotationOrder())
   {
   case MTransformationMatrix::kXYZ:
-    op = m_xform.AddRotateXYZOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotate"));
+    opType = UsdGeomXformOp::TypeRotateXYZ;
     break;
 
   case MTransformationMatrix::kXZY:
-    op = m_xform.AddRotateXZYOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotate"));
+    opType = UsdGeomXformOp::TypeRotateXZY;
     break;
 
   case MTransformationMatrix::kYXZ:
-    op = m_xform.AddRotateYXZOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotate"));
+    opType = UsdGeomXformOp::TypeRotateYXZ;
     break;
 
   case MTransformationMatrix::kYZX:
-    op = m_xform.AddRotateYZXOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotate"));
+    opType = UsdGeomXformOp::TypeRotateYZX;
     break;
 
   case MTransformationMatrix::kZXY:
-    op = m_xform.AddRotateZXYOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotate"));
+    opType = UsdGeomXformOp::TypeRotateZXY;
     break;
 
   case MTransformationMatrix::kZYX:
-    op = m_xform.AddRotateZYXOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotate"));
+    opType = UsdGeomXformOp::TypeRotateZYX;
     break;
 
   default:
     TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertRotateOp - got invalid rotation order; assuming XYZ");
-    op = m_xform.AddRotateXYZOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotate"));
+    opType = UsdGeomXformOp::TypeRotateXYZ;
     break;
   }
 
-  auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kRotate);
-  auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-
-  m_xformops.insert(posInXfm, op);
-  m_orderedOps.insert(posInOps, kRotate);
-  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
-  m_flags |= kPrimHasRotation;
-
+  return insertOp(opType, UsdGeomXformOp::PrecisionFloat,
+      UsdMayaXformStackTokens->rotate, kPrimHasRotation);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1726,7 +1812,7 @@ MStatus TransformationMatrix::rotateTo(const MQuaternion &q, MSpace::Space space
     else
     if(!pushPrimToMatrix() && q != MQuaternion(0.0, 0.0, 0.0, 1.0))
     {
-      insertRotateOp();
+      AL_MAYA_CHECK_ERROR(insertRotateOp(), "error inserting Rotate op");
     }
     if(m_enableUsdWriteback)
     {
@@ -1761,7 +1847,7 @@ MStatus TransformationMatrix::rotateTo(const MEulerRotation &e, MSpace::Space sp
     else
     if(!pushPrimToMatrix() && e != MEulerRotation(0.0, 0.0, 0.0, MEulerRotation::kXYZ))
     {
-      insertRotateOp();
+      AL_MAYA_CHECK_ERROR(insertRotateOp(), "error inserting Rotate op");
     }
     if(m_enableUsdWriteback)
     {
@@ -1785,19 +1871,10 @@ MStatus TransformationMatrix::setRotationOrder(MTransformationMatrix::RotationOr
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::insertRotateAxesOp()
+MStatus TransformationMatrix::insertRotateAxesOp()
 {
-  TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::insertRotateAxesOp\n");
-  // generate our translate op, and insert into the correct stack location
-  UsdGeomXformOp op = m_xform.AddRotateXYZOp(UsdGeomXformOp::PrecisionFloat, TfToken("rotateAxis"));
-
-  auto posInOps = std::lower_bound(m_orderedOps.begin(), m_orderedOps.end(), kRotateAxis);
-  auto posInXfm = m_xformops.begin() + (posInOps - m_orderedOps.begin());
-
-  m_xformops.insert(posInXfm, op);
-  m_orderedOps.insert(posInOps, kRotateAxis);
-  m_xform.SetXformOpOrder(m_xformops, (m_flags & kInheritsTransform) == 0);
-  m_flags |= kPrimHasRotateAxes;
+  return insertOp(UsdGeomXformOp::TypeRotateXYZ, UsdGeomXformOp::PrecisionFloat,
+      UsdMayaXformStackTokens->rotateAxis, kPrimHasRotateAxes);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1817,7 +1894,7 @@ MStatus TransformationMatrix::setRotateOrientation(const MQuaternion &q, MSpace:
     else
     if(!pushPrimToMatrix() && q != MQuaternion(0.0, 0.0, 0.0, 1.0))
     {
-      insertRotateAxesOp();
+      AL_MAYA_CHECK_ERROR(insertRotateAxesOp(), "error inserting RotateAxes op");
     }
     if(m_enableUsdWriteback)
     {
@@ -1844,7 +1921,7 @@ MStatus TransformationMatrix::setRotateOrientation(const MEulerRotation& euler, 
     else
     if(!pushPrimToMatrix() && euler != MEulerRotation(0.0, 0.0, 0.0, MEulerRotation::kXYZ))
     {
-      insertRotateAxesOp();
+      AL_MAYA_CHECK_ERROR(insertRotateAxesOp(), "error inserting RotateAxes op");
     }
     if(m_enableUsdWriteback)
     {
@@ -1900,7 +1977,7 @@ void TransformationMatrix::pushTranslateToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kTranslate)
+    if(opIt->GetName() == UsdMayaXformStackTokens->translate)
     {
       UsdGeomXformOp& op = *it;
       MVector tempTranslation;
@@ -1928,7 +2005,8 @@ void TransformationMatrix::pushPivotToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kPivot)
+    const TfToken& opName = opIt->GetName();
+    if(opName == UsdMayaXformStackTokens->pivot)
     {
       UsdGeomXformOp& op = *it;
       MPoint tempPivot;
@@ -1959,7 +2037,7 @@ void TransformationMatrix::pushRotatePivotToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kRotatePivot)
+    if(opIt->GetName() == UsdMayaXformStackTokens->rotatePivot)
     {
       UsdGeomXformOp& op = *it;
       MPoint tempPivot;
@@ -1987,7 +2065,7 @@ void TransformationMatrix::pushRotatePivotTranslateToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kRotatePivotTranslate)
+    if(opIt->GetName() == UsdMayaXformStackTokens->rotatePivotTranslate)
     {
       UsdGeomXformOp& op = *it;
       MVector tempPivotTranslation;
@@ -2015,7 +2093,7 @@ void TransformationMatrix::pushRotateToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kRotate)
+    if(opIt->GetName() == UsdMayaXformStackTokens->rotate)
     {
       UsdGeomXformOp& op = *it;
       MEulerRotation tempRotate;
@@ -2044,7 +2122,7 @@ void TransformationMatrix::pushRotateAxisToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kRotateAxis)
+    if(opIt->GetName() == UsdMayaXformStackTokens->rotateAxis)
     {
       UsdGeomXformOp& op = *it;
       MVector tempRotateAxis;
@@ -2077,7 +2155,7 @@ void TransformationMatrix::pushScalePivotTranslateToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kScalePivotTranslate)
+    if(opIt->GetName() == UsdMayaXformStackTokens->scalePivotTranslate)
     {
       UsdGeomXformOp& op = *it;
       MVector tempPivotTranslation;
@@ -2105,7 +2183,7 @@ void TransformationMatrix::pushScalePivotToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kScalePivot)
+    if(opIt->GetName() == UsdMayaXformStackTokens->scalePivot)
     {
       UsdGeomXformOp& op = *it;
       MPoint tempPivot;
@@ -2133,7 +2211,7 @@ void TransformationMatrix::pushScaleToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kScale)
+    if(opIt->GetName() == UsdMayaXformStackTokens->scale)
     {
       UsdGeomXformOp& op = *it;
       MVector tempScale(1.0, 1.0, 1.0);
@@ -2161,7 +2239,7 @@ void TransformationMatrix::pushShearToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kShear)
+    if(opIt->GetName() == UsdMayaXformStackTokens->shear)
     {
       UsdGeomXformOp& op = *it;
       internal_pushShear(MPxTransformationMatrix::shearValue, op);
@@ -2183,7 +2261,7 @@ void TransformationMatrix::pushTransformToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
-    if(*opIt == kTransform)
+    if(opIt->GetName() == UsdMayaXformStackTokens->transform)
     {
       UsdGeomXformOp& op = *it;
       if(pushPrimToMatrix())
@@ -2210,121 +2288,83 @@ void TransformationMatrix::pushToPrim()
   auto opIt = m_orderedOps.begin();
   for(std::vector<UsdGeomXformOp>::iterator it = m_xformops.begin(), e = m_xformops.end(); it != e; ++it, ++opIt)
   {
+    const UsdMayaXformOpClassification& opClass = *opIt;
+    if (opClass.IsInvertedTwin()) continue;
+
     UsdGeomXformOp& op = *it;
-    switch(*opIt)
+    const TfToken& opName = opClass.GetName();
+    if (opName == UsdMayaXformStackTokens->translate)
     {
-    case kTranslate:
-      {
-        internal_pushVector(MPxTransformationMatrix::translationValue, op);
-        m_translationFromUsd = MPxTransformationMatrix::translationValue;
-        m_translationTweak = MVector(0, 0, 0);
-      }
-      break;
+      internal_pushVector(MPxTransformationMatrix::translationValue, op);
+      m_translationFromUsd = MPxTransformationMatrix::translationValue;
+      m_translationTweak = MVector(0, 0, 0);
+    }
+    else if (opName == UsdMayaXformStackTokens->pivot)
+    {
+      // is this a bug?
+      internal_pushPoint(MPxTransformationMatrix::rotatePivotValue, op);
+      m_rotatePivotFromUsd = MPxTransformationMatrix::rotatePivotValue;
+      m_rotatePivotTweak = MPoint(0, 0, 0);
+      m_scalePivotFromUsd = MPxTransformationMatrix::scalePivotValue;
+      m_scalePivotTweak = MVector(0, 0, 0);
+    }
+    else if (opName == UsdMayaXformStackTokens->rotatePivotTranslate)
+    {
+      internal_pushPoint(MPxTransformationMatrix::rotatePivotTranslationValue, op);
+      m_rotatePivotTranslationFromUsd = MPxTransformationMatrix::rotatePivotTranslationValue;
+      m_rotatePivotTranslationTweak = MVector(0, 0, 0);
+    }
+    else if (opName == UsdMayaXformStackTokens->rotatePivot)
+    {
+      internal_pushPoint(MPxTransformationMatrix::rotatePivotValue, op);
+      m_rotatePivotFromUsd = MPxTransformationMatrix::rotatePivotValue;
+      m_rotatePivotTweak = MPoint(0, 0, 0);
+    }
+    else if (opName == UsdMayaXformStackTokens->rotate)
+    {
+      internal_pushRotation(MPxTransformationMatrix::rotationValue, op);
+      m_rotationFromUsd = MPxTransformationMatrix::rotationValue;
+      m_rotationTweak = MEulerRotation(0, 0, 0);
+    }
+    else if (opName == UsdMayaXformStackTokens->rotateAxis)
+    {
+      const double radToDeg = 180.0 / M_PI;
+      MEulerRotation e = m_rotateOrientationFromUsd.asEulerRotation();
+      MVector vec(e.x * radToDeg, e.y * radToDeg, e.z * radToDeg);
+      internal_pushVector(vec, op);
+    }
+    else if (opName == UsdMayaXformStackTokens->scalePivotTranslate)
+    {
+      internal_pushVector(MPxTransformationMatrix::scalePivotTranslationValue, op);
+      m_scalePivotTranslationFromUsd = MPxTransformationMatrix::scalePivotTranslationValue;
+      m_scalePivotTranslationTweak = MVector(0, 0, 0);
+    }
 
-    case kPivot:
-      {
-        // is this a bug?
-        internal_pushPoint(MPxTransformationMatrix::rotatePivotValue, op);
-        m_rotatePivotFromUsd = MPxTransformationMatrix::rotatePivotValue;
-        m_rotatePivotTweak = MPoint(0, 0, 0);
-        m_scalePivotFromUsd = MPxTransformationMatrix::scalePivotValue;
-        m_scalePivotTweak = MVector(0, 0, 0);
-      }
-      break;
+    else if (opName == UsdMayaXformStackTokens->scalePivot)
+    {
+      internal_pushPoint(MPxTransformationMatrix::scalePivotValue, op);
+      m_scalePivotFromUsd = MPxTransformationMatrix::scalePivotValue;
+      m_scalePivotTweak = MPoint(0, 0, 0);
+    }
+    else if (opName == UsdMayaXformStackTokens->shear)
+    {
+      internal_pushShear(MPxTransformationMatrix::shearValue, op);
+      m_shearFromUsd = MPxTransformationMatrix::shearValue;
+      m_shearTweak = MVector(0, 0, 0);
+    }
 
-    case kRotatePivotTranslate:
+    else if (opName == UsdMayaXformStackTokens->scale)
+    {
+      internal_pushVector(MPxTransformationMatrix::scaleValue, op);
+      m_scaleFromUsd = MPxTransformationMatrix::scaleValue;
+      m_scaleTweak = MVector(0, 0, 0);
+    }
+    else if (opName == UsdMayaXformStackTokens->transform)
+    {
+      if(pushPrimToMatrix())
       {
-        internal_pushPoint(MPxTransformationMatrix::rotatePivotTranslationValue, op);
-        m_rotatePivotTranslationFromUsd = MPxTransformationMatrix::rotatePivotTranslationValue;
-        m_rotatePivotTranslationTweak = MVector(0, 0, 0);
+        internal_pushMatrix(asMatrix(), op);
       }
-      break;
-
-    case kRotatePivot:
-      {
-        internal_pushPoint(MPxTransformationMatrix::rotatePivotValue, op);
-        m_rotatePivotFromUsd = MPxTransformationMatrix::rotatePivotValue;
-        m_rotatePivotTweak = MPoint(0, 0, 0);
-      }
-      break;
-
-    case kRotate:
-      {
-        internal_pushRotation(MPxTransformationMatrix::rotationValue, op);
-        m_rotationFromUsd = MPxTransformationMatrix::rotationValue;
-        m_rotationTweak = MEulerRotation(0, 0, 0);
-      }
-      break;
-
-    case kRotateAxis:
-      {
-        const double radToDeg = 180.0 / M_PI;
-        MEulerRotation e = m_rotateOrientationFromUsd.asEulerRotation();
-        MVector vec(e.x * radToDeg, e.y * radToDeg, e.z * radToDeg);
-        internal_pushVector(vec, op);
-      }
-      break;
-
-    case kRotatePivotInv:
-      {
-      }
-      break;
-
-    case kScalePivotTranslate:
-      {
-        internal_pushVector(MPxTransformationMatrix::scalePivotTranslationValue, op);
-        m_scalePivotTranslationFromUsd = MPxTransformationMatrix::scalePivotTranslationValue;
-        m_scalePivotTranslationTweak = MVector(0, 0, 0);
-      }
-      break;
-
-    case kScalePivot:
-      {
-        internal_pushPoint(MPxTransformationMatrix::scalePivotValue, op);
-        m_scalePivotFromUsd = MPxTransformationMatrix::scalePivotValue;
-        m_scalePivotTweak = MPoint(0, 0, 0);
-      }
-      break;
-
-    case kShear:
-      {
-        internal_pushShear(MPxTransformationMatrix::shearValue, op);
-        m_shearFromUsd = MPxTransformationMatrix::shearValue;
-        m_shearTweak = MVector(0, 0, 0);
-      }
-      break;
-
-    case kScale:
-      {
-        internal_pushVector(MPxTransformationMatrix::scaleValue, op);
-        m_scaleFromUsd = MPxTransformationMatrix::scaleValue;
-        m_scaleTweak = MVector(0, 0, 0);
-      }
-      break;
-
-    case kScalePivotInv:
-      {
-      }
-      break;
-
-    case kPivotInv:
-      {
-      }
-      break;
-
-    case kTransform:
-      {
-        if(pushPrimToMatrix())
-        {
-          internal_pushMatrix(asMatrix(), op);
-        }
-      }
-      break;
-
-    case kUnknownOp:
-      {
-      }
-      break;
     }
   }
   notifyProxyShapeOfRedraw();
@@ -2429,10 +2469,13 @@ void TransformationMatrix::enableReadAnimatedValues(bool enabled)
     else
     if(primHasTransform())
     {
-      auto transformIt = std::find(m_orderedOps.begin(), m_orderedOps.end(), kTransform);
-      if (transformIt != m_orderedOps.end() )
+      for(size_t i = 0, n = m_orderedOps.size(); i < n; ++i)
       {
-        internal_pushMatrix(asMatrix(), m_xformops[std::distance(m_orderedOps.begin(), transformIt)]);
+        if(m_orderedOps[i].GetName() == UsdMayaXformStackTokens->transform)
+        {
+          internal_pushMatrix(asMatrix(), m_xformops[i]);
+          break;
+        }
       }
     }
   }
@@ -2492,10 +2535,13 @@ void TransformationMatrix::enablePushToPrim(bool enabled)
     else
     if(primHasTransform())
     {
-      auto transformIt = std::find(m_orderedOps.begin(), m_orderedOps.end(), kTransform);
-      if (transformIt != m_orderedOps.end() )
+      for(size_t i = 0, n = m_orderedOps.size(); i < n; ++i)
       {
-        internal_pushMatrix(asMatrix(), m_xformops[std::distance(m_orderedOps.begin(), transformIt)]);
+        if(m_orderedOps[i].GetName() == UsdMayaXformStackTokens->transform)
+        {
+          internal_pushMatrix(asMatrix(), m_xformops[i]);
+          break;
+        }
       }
     }
   }

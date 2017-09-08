@@ -21,6 +21,11 @@ option(BUILD_USDMAYA_SCHEMAS "Build optional schemas." ON)
 option(BUILD_USDMAYA_TRANSLATORS "Build optional translators." ON)
 option(SKIP_USDMAYA_TESTS "Build tests" OFF)
 
+
+# TODO: install the xformStack stuff into common area, so we don't read out of pxr plugin
+include_directories(${PROJECT_BINARY_DIR}/../../maya/include)
+link_directories(${PROJECT_BINARY_DIR}/../../plugin/pxr/maya/lib/usdMaya)
+
 # FindBoost is particularly buggy, and doesn't like custom boost locations.
 # Adding specific components forces calls to _Boost_find_library, which
 # is the rationale for listing them here.

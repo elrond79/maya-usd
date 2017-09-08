@@ -18,7 +18,7 @@
 
 #include "translatorPrim.h"
 #include "translatorUtil.h"
-#include "../utils/xformStack.h"
+#include "mayaUsd/fileio/utils/xformStack.h"
 
 #include "pxr/base/gf/math.h"
 #include "pxr/base/gf/matrix4d.h"
