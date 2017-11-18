@@ -125,8 +125,8 @@ class TransformationMatrix
     // or none of the above (no flags set)?
     kFromMatrix = 1 << 8,
     kFromMayaSchema = 1 << 9,
-    kFromCommonSchema = 1 << 10,
-    kAnyKnownSchema = kFromMatrix | kFromMayaSchema | kFromCommonSchema,
+    kSinglePivotSchema = 1 << 10,
+    kAnyKnownSchema = kFromMatrix | kFromMayaSchema | kSinglePivotSchema,
 
     // which transform components are present in the prim?
     kPrimHasScale = 1 << 16,
@@ -160,6 +160,15 @@ class TransformationMatrix
   /// (since many / most xforms will never be altered, would be waste to
   /// do this for all xforms)
   void buildOrderedOpMayaIndices();
+
+  /// Used by setScalePivot / setRotatePivot to both insert and push pivots
+  /// Will see if we need to split a singular pivot (from a CommonStack) into separate
+  /// rotatePivot and scalePivot (from a MayaStack), and do so if needed.
+  MStatus insertAndPushPivotOp(const TfToken& pivotName);
+
+  MStatus removeOp(
+      const TfToken& opName,
+      Flags oldFlag);
 
   // Used by various insert*Op methods
   MStatus insertOp(
@@ -374,6 +383,17 @@ class TransformationMatrix
   MMatrix asMatrix(double percent) const override;
 
 public:
+
+  /// \brief  Return a static reference to a Xform Stack similar to the MayaStack, but with a single pivot
+  ///         Exists as a "bridge" between the CommonStack and the MayaStack. Having this stack allows
+  ///         this plugin to keep using the "original" xform ops as much as possible, until required
+  ///         to change them; otherwise, as soon as any non-CommonStack-compatible op was inserted, we
+  ///         would need to switch to a MayaStack, which would mean splitting the singular pivot to
+  ///         separate rotatePivot and scalePivot.
+  /// return  A UsdMayaXformStack that is similar to a MayaStack, but with a single pivot; a MayaStack
+  ///         and will have an equivalent MayaSinglePivotStack if the rotatePivot == scalePivot
+  AL_USDMAYA_PUBLIC
+  static const UsdMayaXformStack& MayaSinglePivotStack();
 
   /// \brief  the type ID of the transformation matrix
   AL_USDMAYA_PUBLIC
