@@ -24,6 +24,8 @@
 #include "maya/MObjectHandle.h"
 #include "maya/MPxTransform.h"
 
+PXR_NAMESPACE_USING_DIRECTIVE
+
 namespace AL {
 namespace usdmaya {
 namespace nodes {
@@ -113,6 +115,8 @@ public:
   //--------------------------------------------------------------------------------------------------------------------
   /// \name Methods
   //--------------------------------------------------------------------------------------------------------------------
+
+  void setPrim(const UsdPrim& prim) override;
 
   const MObject getProxyShape() const override
     { return proxyShapeHandle.object(); }

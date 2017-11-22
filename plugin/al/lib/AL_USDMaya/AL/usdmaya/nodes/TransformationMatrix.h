@@ -412,8 +412,10 @@ public:
   TransformationMatrix(const UsdPrim& prim);
 
   /// \brief  set the prim that this transformation matrix will read/write to.
+  ///         Renamed to "setPrimInternal" to emphasize that you should generally use
+  ///         Transform::setPrim (and only it will call setPrimInternal)
   /// \param  prim the prim
-  void setPrim(const UsdPrim& prim, Scope* transformNode) override;
+  void setPrimInternal(const UsdPrim& prim, Scope* transformNode);
 
   /// \brief  Returns the timecode to use when pushing the transform values to the USD prim. If readFromTimeline flag
   ///         is set to true, then the timecode will be read from the incoming time attribute on the transform node.

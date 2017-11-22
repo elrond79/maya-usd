@@ -298,6 +298,14 @@ void Transform::updateTransform(MDataBlock& dataBlock)
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+void Transform::setPrim(const UsdPrim& prim)
+{
+  getTransMatrix()->setPrimInternal(prim, this);
+  // Now make sure our own attributes are up-to-date
+  dirtyMatrix();
+}
+
+//----------------------------------------------------------------------------------------------------------------------
 MBoundingBox Transform::boundingBox() const
 {
   TF_DEBUG(ALUSDMAYA_EVALUATION).Msg("Transform::boundingBox\n");
@@ -464,11 +472,11 @@ MStatus Transform::validateAndSetValue(const MPlug& plug, const MDataHandle& han
         primPath = SdfPath(path.asChar());
         usdPrim = data->stage->GetPrimAtPath(primPath);
       }
-      transform()->setPrim(usdPrim, this);
+      setPrim(usdPrim);
     }
     else
     {
-      transform()->setPrim(UsdPrim(), this);
+      setPrim(UsdPrim());
     }
     return MS::kSuccess;
   }
@@ -489,7 +497,7 @@ MStatus Transform::validateAndSetValue(const MPlug& plug, const MDataHandle& han
         primPath = SdfPath(path.asChar());
         usdPrim = UsdPrim(data->stage->GetPrimAtPath(primPath));
       }
-      transform()->setPrim(usdPrim, this);
+      setPrim(usdPrim);
       if(usdPrim)
         updateTransform(dataBlock);
     }
@@ -500,7 +508,7 @@ MStatus Transform::validateAndSetValue(const MPlug& plug, const MDataHandle& han
         TF_DEBUG(ALUSDMAYA_EVALUATION).Msg("Could not set '%s' to '%s' - could not retrieve stage\n",
             plug.name().asChar(), path.asChar());
       }
-      transform()->setPrim(UsdPrim(), this);
+      setPrim(UsdPrim());
     }
     return MS::kSuccess;
   }

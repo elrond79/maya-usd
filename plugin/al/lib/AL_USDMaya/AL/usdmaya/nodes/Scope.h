@@ -74,6 +74,9 @@ public:
   /// \name Methods
   //--------------------------------------------------------------------------------------------------------------------
 
+  virtual void setPrim(const UsdPrim& prim)
+  {}
+
   /// \brief  returns the transformation matrix for this transform node
   /// \return the transformation matrix
   inline BasicTransformationMatrix* transform() const

@@ -120,19 +120,19 @@ TransformationMatrix::TransformationMatrix(const UsdPrim& prim)
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::setPrim(const UsdPrim& prim, Scope* transformNode)
+void TransformationMatrix::setPrimInternal(const UsdPrim& prim, Scope* transformNode)
 {
   m_enableUsdWriteback = false;
   if(prim.IsValid())
   {
-    TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::setPrim %s\n", prim.GetName().GetText());
+    TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::setPrimInternal %s\n", prim.GetName().GetText());
     m_prim = prim;
     UsdGeomXformable xform(prim);
     m_xform = xform;
   }
   else
   {
-    TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::setPrim null\n");
+    TF_DEBUG(ALUSDMAYA_TRANSFORM_MATRIX).Msg("TransformationMatrix::setPrimInternal null\n");
     m_prim = UsdPrim();
     m_xform = UsdGeomXformable();
   }
