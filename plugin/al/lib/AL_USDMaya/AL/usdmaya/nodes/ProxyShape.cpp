@@ -1316,8 +1316,8 @@ void ProxyShape::loadStage()
       }
     }
   }
+  clearBoundingBoxCache();
 
-  m_boundingBoxCache.clear();
   if (stageId.IsValid())
   {
     // Load stage from cache.
