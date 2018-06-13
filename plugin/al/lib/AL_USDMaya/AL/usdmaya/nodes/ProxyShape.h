@@ -26,6 +26,7 @@
 #include "AL/usdmaya/fileio/translators/TranslatorBase.h"
 #include "AL/usdmaya/fileio/translators/TranslatorContext.h"
 #include "AL/usdmaya/nodes/proxy/PrimFilter.h"
+#include "AL/usdmaya/DebugCodes.h"
 #include "AL/usdmaya/SelectabilityDB.h"
 
 #include "AL/usd/transaction/Notice.h"

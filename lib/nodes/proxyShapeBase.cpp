@@ -638,13 +638,22 @@ MayaUsdProxyShapeBase::boundingBox() const
         _boundingBoxCache.find(currTime);
 
     if (cacheLookup != _boundingBoxCache.end()) {
+        TF_DEBUG(USDMAYA_PROXYSHAPEBASE_BBOX).Msg(
+            "Using cached bounding box: time %f\n", currTime.GetValue());
         return cacheLookup->second;
     }
 
     UsdPrim prim = _GetUsdPrim(dataBlock);
     if (!prim) {
+        TF_DEBUG(USDMAYA_PROXYSHAPEBASE_BBOX).Msg(
+            "Using empty bounding box because no prim found: time %f\n",
+            currTime.GetValue());
         return MBoundingBox();
     }
+
+    TF_DEBUG(USDMAYA_PROXYSHAPEBASE_BBOX).Msg(
+        "Using re-calculated bounding box: time %f\n",
+        currTime.GetValue());
 
     const UsdGeomImageable imageablePrim(prim);
 
@@ -694,6 +703,7 @@ MayaUsdProxyShapeBase::boundingBox() const
 void
 MayaUsdProxyShapeBase::clearBoundingBoxCache()
 {
+    TF_DEBUG(USDMAYA_PROXYSHAPEBASE_BBOX).Msg("Clearing bounding box cache\n");
     _boundingBoxCache.clear();
 }
 
