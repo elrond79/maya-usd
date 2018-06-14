@@ -252,6 +252,7 @@ MayaUsdProxyShapeBase::initialize()
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
     numericAttrFn.setKeyable(true);
     numericAttrFn.setReadable(false);
+    numericAttrFn.setInternal(true);
     numericAttrFn.setAffectsAppearance(true);
     retValue = addAttribute(drawRenderPurposeAttr);
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
@@ -265,6 +266,7 @@ MayaUsdProxyShapeBase::initialize()
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
     numericAttrFn.setKeyable(true);
     numericAttrFn.setReadable(false);
+    numericAttrFn.setInternal(true);
     numericAttrFn.setAffectsAppearance(true);
     retValue = addAttribute(drawProxyPurposeAttr);
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
@@ -278,6 +280,7 @@ MayaUsdProxyShapeBase::initialize()
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
     numericAttrFn.setKeyable(true);
     numericAttrFn.setReadable(false);
+    numericAttrFn.setInternal(true);
     numericAttrFn.setAffectsAppearance(true);
     retValue = addAttribute(drawGuidePurposeAttr);
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
@@ -744,6 +747,14 @@ MayaUsdProxyShapeBase::setInternalValue(const MPlug& plug, const MDataHandle& da
 {
     if (plug == excludePrimPathsAttr) {
         _IncreaseExcludePrimPathsVersion();
+    }
+    else if (plug == drawRenderPurposeAttr ||
+            plug == drawProxyPurposeAttr ||
+			plug == drawGuidePurposeAttr) {
+	    clearBoundingBoxCache();
+	    // clearBoundingBoxCache doesn't read any plugs, so we can just return
+	    // false, and rely on "normal" plug-setting behavior
+	    return false;
     }
     return MPxSurfaceShape::setInternalValue(plug, dataHandle);
 }
