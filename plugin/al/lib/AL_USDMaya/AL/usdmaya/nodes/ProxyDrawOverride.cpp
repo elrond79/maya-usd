@@ -493,21 +493,6 @@ ProxyShape* ProxyDrawOverride::getShape(const MDagPath& objPath)
   return static_cast<ProxyShape*>(dnNode.userNode());
 }
 
-//----------------------------------------------------------------------------------------------------------------------
-class ProxyDrawOverrideSelectionHelper
-{
-public:
-
-  static SdfPath path_ting(const SdfPath& a, const SdfPath& b, const int c)
-  {
-    m_paths.push_back(a);
-    return a;
-  }
-  static SdfPathVector m_paths;
-};
-SdfPathVector ProxyDrawOverrideSelectionHelper::m_paths;
-
-
 #if MAYA_API_VERSION >= 20180600
 //----------------------------------------------------------------------------------------------------------------------
 bool ProxyDrawOverride::userSelect(
@@ -590,6 +575,20 @@ bool ProxyDrawOverride::userSelect(
   if (resolution < 10) { resolution = 10; }
   if (resolution > 1024) { resolution = 1024; }
 
+  auto getHitPath = [&engine] (
+      const SdfPath& inPrimPath,
+      const SdfPath& instancerPath,
+      const int instanceIndex) -> SdfPath
+  {
+    auto path = engine->GetPrimPathFromInstanceIndex(inPrimPath, instanceIndex);
+    if (!path.IsEmpty())
+    {
+      return path;
+    }
+
+    return inPrimPath.StripAllVariantSelections();
+  };
+
   TfToken intersectionMode = selectInfo.singleSelection()
       ? HdxIntersectionModeTokens->nearestToCamera
       : HdxIntersectionModeTokens->unique;
@@ -602,27 +601,13 @@ bool ProxyDrawOverride::userSelect(
           params,
           intersectionMode,
           resolution,
-          ProxyDrawOverrideSelectionHelper::path_ting,
+          getHitPath,
           &hitBatch);
 
   auto selected = false;
 
-  auto getHitPath = [&engine] (Engine::HitBatch::const_reference& it) -> SdfPath
-  {
-    const Engine::HitInfo& hit = it.second;
-    auto path = engine->GetPrimPathFromInstanceIndex(it.first, hit.hitInstanceIndex);
-    if (!path.IsEmpty())
-    {
-      return path;
-    }
-
-    return it.first.StripAllVariantSelections();
-  };
-
-
   auto addSelection = [&hitBatch, &selectionList,
-    &worldSpaceHitPts, proxyShape, &selected,
-    &getHitPath] (const MString& command)
+    &worldSpaceHitPts, proxyShape, &selected] (const MString& command)
   {
     selected = true;
     MStringArray nodes;
@@ -630,7 +615,7 @@ bool ProxyDrawOverride::userSelect(
     
     for(const auto& it : hitBatch)
     {
-      auto path = getHitPath(it).StripAllVariantSelections();
+      auto path = it.first.StripAllVariantSelections();
       auto obj = proxyShape->findRequiredPath(path);
       if (obj != MObject::kNullObj) 
       {
@@ -686,9 +671,8 @@ bool ProxyDrawOverride::userSelect(
 
       for(const auto& it : hitBatch)
       {
-        auto path = getHitPath(it);
         command += " -pp \"";
-        command += path.GetText();
+        command += it.first.GetText();
         command += "\"";
       }
 
@@ -714,7 +698,7 @@ bool ProxyDrawOverride::userSelect(
       paths.reserve(hitBatch.size());
       for (const auto& it : hitBatch)
       {
-        paths.push_back(getHitPath(it));
+        paths.push_back(it.first);
       }
     }
 
@@ -917,8 +901,6 @@ bool ProxyDrawOverride::userSelect(
     } // else MAYA_WANT_UFE_SELECTION
 #endif
   }
-
-  ProxyDrawOverrideSelectionHelper::m_paths.clear();
 
   // We are done executing commands that needed to handle our current
   // proxy as a special case.  Unset the ignore state on the proxy.
