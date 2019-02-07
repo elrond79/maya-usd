@@ -32,7 +32,6 @@
 #include "AL/usdmaya/nodes/Engine.h"
 
 #include "pxr/imaging/hdx/pickTask.h"
-#include "pxr/imaging/hdx/taskController.h"
 
 namespace AL {
 namespace usdmaya {
@@ -47,13 +46,13 @@ bool Engine::TestIntersectionBatch(
   const GfMatrix4d &worldToLocalSpace,
   const SdfPathVector& paths,
   UsdImagingGLRenderParams params,
+  const TfToken &intersectionMode,
   unsigned int pickResolution,
   PathTranslatorCallback pathTranslator,
   HitBatch *outHit) {
   if (ARCH_UNLIKELY(_legacyImpl)) {
     return false;
   }
-
   _UpdateHydraCollection(&_intersectCollection, paths, params);
 
   TfTokenVector renderTags;
@@ -68,8 +67,13 @@ bool Engine::TestIntersectionBatch(
 
   HdxPickTaskContextParams pickParams;
   pickParams.resolution = GfVec2i(pickResolution, pickResolution);
-  pickParams.hitMode = HdxPickTokens->hitAll;
-  pickParams.resolveMode = HdxPickTokens->resolveUnique;
+  if (resolveMode == HdxPickTokens->resolveNearestToCenter ||
+      resolveMode == HdxPickTokens->resolveNearestToCamera) {
+    pickParams.hitMode = HdxPickTokens->hitFirst;
+  } else {
+    pickParams.hitMode = HdxPickTokens->hitAll;
+  }
+  pickParams.resolveMode = resolveMode;
   pickParams.viewMatrix = worldToLocalSpace * viewMatrix;
   pickParams.projectionMatrix = projectionMatrix;
   pickParams.clipPlanes = params.clipPlanes;
