@@ -762,7 +762,7 @@ MStatus MtohRenderOverride::setup(const MString& destination) {
     return MS::kSuccess;
 }
 
-MStatus MtohRenderOverride::MtohRenderOverride::cleanup() {
+MStatus MtohRenderOverride::cleanup() {
     _currentOperation = -1;
     return MS::kSuccess;
 }
