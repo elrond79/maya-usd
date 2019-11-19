@@ -275,6 +275,13 @@ target_link_libraries(${PYTHON_LIBRARY_NAME}
     ${LIBRARY_NAME}
 )
 
+# rpath setup
+if(IS_MACOSX OR IS_LINUX) 
+    mayaUsd_init_rpath(rpath lib/python/${arDirPath})
+    mayaUsd_add_rpath(rpath "${MAYAUSD_INSTALL_PREFIX}/lib")
+    mayaUsd_install_rpath(rpath ${PYTHON_LIBRARY_NAME})
+endif()
+
 set(libFile ${CMAKE_SHARED_LIBRARY_PREFIX}${LIBRARY_NAME}${CMAKE_SHARED_LIBRARY_SUFFIX})
 set(PLUG_INFO_RESOURCE_PATH "resources")
 set(PLUG_INFO_ROOT "..")

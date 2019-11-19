@@ -96,9 +96,9 @@ if(IS_MACOSX OR IS_LINUX)
     elseif(DEFINED PXR_USD_LOCATION)
         mayaUsd_add_rpath(rpath "${PXR_USD_LOCATION}/lib")
     endif()
-    mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/lib")
-    mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/plugin/pxr/lib")
-    mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/plugin/pxr/maya/lib")
+    mayaUsd_add_rpath(rpath "${MAYAUSD_INSTALL_PREFIX}/lib")
+    mayaUsd_add_rpath(rpath "${MAYAUSD_INSTALL_PREFIX}/plugin/pxr/lib")
+    mayaUsd_add_rpath(rpath "${MAYAUSD_INSTALL_PREFIX}/plugin/pxr/maya/lib")
     mayaUsd_install_rpath(rpath ${PXR_PACKAGE})
 endif()
 
@@ -120,7 +120,7 @@ add_test(
     NAME TestAL_USDMaya
     COMMAND
         ${CMAKE_CURRENT_SOURCE_DIR}/run_mayaplugin_tests.sh
-            ${CMAKE_INSTALL_PREFIX}/${INSTALL_DIR_SUFFIX}
+            ${CMAKE_INSTALL_PREFIX}
             ${USD_LIBRARY_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}
 )

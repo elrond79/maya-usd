@@ -77,7 +77,7 @@ if(IS_MACOSX OR IS_LINUX)
     elseif(DEFINED PXR_USD_LOCATION)
         mayaUsd_add_rpath(rpath "${PXR_USD_LOCATION}/lib")
     endif()
-    mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/lib")
+    mayaUsd_add_rpath(rpath "${MAYAUSD_INSTALL_PREFIX}/lib")
     mayaUsd_install_rpath(rpath ${TRANSLATORS_PACKAGE})
 endif()
 

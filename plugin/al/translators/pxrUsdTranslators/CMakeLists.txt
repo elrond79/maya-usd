@@ -43,9 +43,9 @@ if(IS_MACOSX OR IS_LINUX)
         mayaUsd_add_rpath(rpath "${PXR_USD_LOCATION}/lib")
     endif()
 
-    mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/lib")
-    mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/plugin/pxr/lib")
-    mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/plugin/pxr/maya/lib")
+    mayaUsd_add_rpath(rpath "${MAYAUSD_INSTALL_PREFIX}/lib")
+    mayaUsd_add_rpath(rpath "${MAYAUSD_INSTALL_PREFIX}/plugin/pxr/lib")
+    mayaUsd_add_rpath(rpath "${MAYAUSD_INSTALL_PREFIX}/plugin/pxr/maya/lib")
     mayaUsd_install_rpath(rpath ${PXR_TRANSLATORS_PACKAGE})
 endif()
 
@@ -66,12 +66,12 @@ target_link_libraries(${PXR_TRANSLATORS_PACKAGE} PRIVATE ${DEPENDANT_LIBRARIES})
 
 install(TARGETS ${PXR_TRANSLATORS_PACKAGE}
  LIBRARY
- DESTINATION ${INSTALL_DIR_SUFFIX}/plugin
+ DESTINATION ${CMAKE_INSTALL_PREFIX}/plugin
  RUNTIME
- DESTINATION ${INSTALL_DIR_SUFFIX}/plugin
+ DESTINATION ${CMAKE_INSTALL_PREFIX}/plugin
 )
 if(IS_WINDOWS)
- install(FILES $<TARGET_PDB_FILE:${PXR_TRANSLATORS_PACKAGE}> DESTINATION ${INSTALL_DIR_SUFFIX}/plugin OPTIONAL)
+ install(FILES $<TARGET_PDB_FILE:${PXR_TRANSLATORS_PACKAGE}> DESTINATION ${CMAKE_INSTALL_PREFIX}/plugin OPTIONAL)
 endif()
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/plugInfo.json
