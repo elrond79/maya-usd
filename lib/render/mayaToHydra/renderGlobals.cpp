@@ -56,7 +56,7 @@ TF_DEFINE_PRIVATE_TOKENS(
 
 namespace {
 
-#ifdef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM >= 1901
 std::unordered_map<TfToken, HdRenderSettingDescriptorList, TfToken::HashFunctor>
     _rendererAttributes;
 #endif
@@ -212,7 +212,7 @@ void _GetFromPlug<int>(const MPlug& plug, int& out) {
     out = plug.asInt();
 }
 
-#ifdef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM >= 1901
 template <>
 void _GetFromPlug<float>(const MPlug& plug, float& out) {
     out = plug.asFloat();
@@ -246,7 +246,7 @@ void _GetColorAttribute(
     out[3] = plugA.asFloat();
 }
 
-#ifdef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM >= 1901
 bool _IsSupportedAttribute(const VtValue& v) {
     return v.IsHolding<bool>() || v.IsHolding<int>() || v.IsHolding<float>() ||
            v.IsHolding<GfVec4f>() || v.IsHolding<std::string>();
@@ -298,7 +298,7 @@ void MtohInitializeRenderGlobals() {
                 "Error in render override option box command function: \n%s",
                 status.errorString().asChar());
         }
-#ifdef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM >= 1901
         auto* rendererPlugin =
             HdRendererPluginRegistry::GetInstance().GetRendererPlugin(
                 rendererDesc.rendererName);
@@ -409,7 +409,7 @@ MObject MtohCreateRenderGlobals() {
         defGlobals.colorSelectionHighlightColor);
     // TODO: Move this to an external function and add support for more types,
     //  and improve code quality/reuse.
-#ifdef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM >= 1901
     for (const auto& rit : _rendererAttributes) {
         const auto rendererName = rit.first;
         for (const auto& attr : rit.second) {
@@ -490,7 +490,7 @@ MtohRenderGlobals MtohGetRenderGlobals() {
         ret.colorSelectionHighlightColor);
     // TODO: Move this to an external function and add support for more types,
     //  and improve code quality/reuse.
-#ifdef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM >= 1901
     for (const auto& rit : _rendererAttributes) {
         const auto rendererName = rit.first;
         auto& settings = ret.rendererSettings[rendererName];

@@ -27,7 +27,7 @@
 #include <pxr/imaging/glf/contextCaps.h>
 #include <pxr/imaging/glf/textureRegistry.h>
 
-#ifdef HDMAYA_USD_001905_BUILD
+#if USD_VERSION_NUM >= 1905
 #include <pxr/imaging/hio/glslfx.h>
 #else
 #include <pxr/imaging/glf/glslfx.h>
@@ -35,9 +35,9 @@ typedef PXR_NS::GlfGLSLFX HioGlslfx;
 namespace {
 auto& HioGlslfxTokens = PXR_NS::GlfGLSLFXTokens;
 }
-#endif // HDMAYA_USD_001905_BUILD
+#endif // USD_VERSION_NUM >= 1905
 
-#ifdef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM >= 1901
 #include <pxr/imaging/glf/udimTexture.h>
 #include <pxr/usdImaging/usdImaging/textureUtils.h>
 #endif
@@ -102,7 +102,7 @@ auto _PreviewShader = []() -> const _ShaderSourceAndMeta& {
     return ret;
 };
 
-#ifndef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM < 1901
 enum class HdTextureType { Uv, Ptex, Udim };
 #endif
 
@@ -388,7 +388,7 @@ private:
                     _textureResources[paramName] = textureInstance.GetValue();
                 }
 
-#ifdef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM >= 1901
                 if (GlfIsSupportedUdimTexture(filePath)) {
                     if (TfDebug::IsEnabled(HDMAYA_ADAPTER_MATERIALS) &&
                         textureType != HdTextureType::Udim) {
@@ -440,7 +440,7 @@ private:
                     HdMaterialParam::ParamTypeTexture, it.param.name,
                     it.param.fallbackValue,
                     GetID().AppendProperty(remappedName), _stSamplerCoords,
-#ifdef HDMAYA_USD_001901_BUILD
+#if USD_VERSION_NUM >= 1901
                     textureType);
 #else
                     false);
