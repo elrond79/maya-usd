@@ -174,35 +174,19 @@ const std::string& HdMayaMaterialAdapter::GetPreviewDisplacementSource() {
     return _PreviewShader().displacementCode;
 }
 
-// Specialized version of :
-// https://en.cppreference.com/w/cpp/algorithm/lower_bound
 HdMayaShaderParams::const_iterator _FindPreviewParam(const TfToken& id) {
     TF_DEBUG(HDMAYA_ADAPTER_MATERIALS)
         .Msg("_FindPreviewParam(id=%s)\n", id.GetText());
-    HdMayaShaderParams::const_iterator it;
-    typename std::iterator_traits<
-        HdMayaShaderParams::const_iterator>::difference_type count,
-        step;
+
     const auto& previewShaderParams =
         HdMayaMaterialNetworkConverter::GetPreviewShaderParams();
-    auto first = previewShaderParams.cbegin();
-    count = std::distance(first, previewShaderParams.cend());
 
-    while (count > 0) {
-        it = first;
-        step = count / 2;
-        std::advance(it, step);
-        if (it->param.name < id) {
-            first = ++it;
-            count -= step + 1;
-        } else {
-            count = step;
-        }
-    }
-    return first != previewShaderParams.cend()
-               ? (first->param.name == id ? first
-                                               : previewShaderParams.cend())
-               : first;
+    return std::lower_bound(
+            previewShaderParams.cbegin(), previewShaderParams.cend(), id,
+            [](const HdMayaShaderParam& param, const TfToken& id){
+                return param.param.name < id;
+            }
+    );
 }
 
 const VtValue& HdMayaMaterialAdapter::GetPreviewMaterialParamValue(
