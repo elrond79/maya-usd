@@ -184,7 +184,11 @@ HdMayaShaderParams::const_iterator _FindPreviewParam(const TfToken& id) {
     return std::lower_bound(
             previewShaderParams.cbegin(), previewShaderParams.cend(), id,
             [](const HdMayaShaderParam& param, const TfToken& id){
+#if USD_VERSION_NUM >= 1911
                 return param.param.name < id;
+#else
+                return param.param.GetName() < id;
+#endif
             }
     );
 }
@@ -200,7 +204,11 @@ const VtValue& HdMayaMaterialAdapter::GetPreviewMaterialParamValue(
             paramName.GetText());
         return _emptyValue;
     }
+#if USD_VERSION_NUM >= 1911
     return it->param.fallbackValue;
+#else
+    return it->param.GetFallbackValue();
+#endif
 }
 
 #endif // USD_VERSION_NUM <= 1911
@@ -234,10 +242,18 @@ VtValue HdMayaMaterialAdapter::GetPreviewMaterialResource(
     for (const auto& it :
          HdMayaMaterialNetworkConverter::GetPreviewShaderParams()) {
         node.parameters.emplace(
+#if USD_VERSION_NUM >= 1911
             it.param.name, it.param.fallbackValue);
+#else
+            it.param.GetName(), it.param.GetFallbackValue());
+#endif
     }
     network.nodes.push_back(node);
+#if USD_VERSION_NUM >= 1911
     map.map.emplace(HdMaterialTerminalTokens->surface, network);
+#else
+    map.map.emplace(UsdImagingTokens->bxdf, network);
+#endif
     return VtValue(map);
 }
 
@@ -412,7 +428,11 @@ private:
         for (const auto& it :
              HdMayaMaterialNetworkConverter::GetPreviewShaderParams()) {
             auto textureType = HdTextureType::Uv;
+#if USD_VERSION_NUM >= 1911
             auto remappedName = it.param.name;
+#else
+            auto remappedName = it.param.GetName();
+#endif
             auto attrConverter = nodeConverter->GetAttrConverter(remappedName);
             if (attrConverter) {
                 TfToken tempName = attrConverter->GetPlugName(remappedName);
@@ -421,8 +441,13 @@ private:
 
             if (_RegisterTexture(node, remappedName, textureType)) {
                 ret.emplace_back(
+#if USD_VERSION_NUM >= 1911
                     HdMaterialParam::ParamTypeTexture, it.param.name,
                     it.param.fallbackValue,
+#else
+                    HdMaterialParam::ParamTypeTexture, it.param.GetName(),
+                    it.param.GetFallbackValue(),
+#endif
                     GetID().AppendProperty(remappedName), _stSamplerCoords,
 #if USD_VERSION_NUM >= 1901
                     textureType);
@@ -433,7 +458,11 @@ private:
                     .Msg(
                         "HdMayaShadingEngineAdapter: registered texture with "
                         "connection path: %s\n",
+#if USD_VERSION_NUM >= 1911
                         ret.back().connection.GetText());
+#else
+                        ret.back().GetConnection().GetText());
+#endif
             } else {
                 ret.emplace_back(it.param);
             }
@@ -468,8 +497,13 @@ private:
         auto attrConverter = nodeConverter->GetAttrConverter(paramName);
         if (attrConverter) {
             return attrConverter->GetValue(
+#if USD_VERSION_NUM >= 1911
                 node, previewIt->param.name, previewIt->type,
                 &previewIt->param.fallbackValue);
+#else
+                node, previewIt->param.GetName(), previewIt->type,
+                &previewIt->param.GetFallbackValue());
+#endif
         } else {
             return GetPreviewMaterialParamValue(paramName);
         }
@@ -528,12 +562,14 @@ private:
         }
 
         HdMaterialNetworkMap materialNetworkMap;
-        materialNetworkMap.map[HdMaterialTerminalTokens->surface] = materialNetwork;
 #if USD_VERSION_NUM >= 1911
+        materialNetworkMap.map[HdMaterialTerminalTokens->surface] = materialNetwork;
         if (!materialNetwork.nodes.empty()) {
             materialNetworkMap.terminals.push_back(
                 materialNetwork.nodes.back().path);
         }
+#else
+        materialNetworkMap.map[UsdImagingTokens->bxdf] = materialNetwork;
 #endif
         // HdMaterialNetwork displacementNetwork;
         // materialNetworkMap.map[HdMaterialTerminalTokens->displacement] =
