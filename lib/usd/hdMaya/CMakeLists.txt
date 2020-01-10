@@ -38,6 +38,13 @@ set(SRC
     debugCodes.cpp
     utils.cpp)
 
+if (HDMAYA_LUMA_BUILD)
+    set(SRC
+        ${SRC}
+        adapters/imagePlaneAdapter.cpp
+        adapters/imagePlaneMaterialAdapter.cpp)
+endif()
+
 add_library(${TARGET_NAME} SHARED ${SRC})
 
 target_link_libraries(${TARGET_NAME} PUBLIC 
