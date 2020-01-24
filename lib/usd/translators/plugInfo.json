@@ -6,6 +6,7 @@
             "PrimReader": {
               "providesTranslator": [
                 "UsdGeomCamera",
+                "UsdGeomImagePlane",
                 "UsdGeomMesh",
                 "UsdGeomNurbsCurves",
                 "UsdGeomNurbsPatch",
@@ -29,6 +30,7 @@
               "providesTranslator": [
                 "camera",
                 "file",
+                "imagePlane",
                 "instancer",
                 "joint",
                 "locator",

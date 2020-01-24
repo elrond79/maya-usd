@@ -89,6 +89,7 @@ list(APPEND mayaUsd_src
     fileio/translators/translatorCamera.cpp
     fileio/translators/translatorCurves.cpp
     fileio/translators/translatorGprim.cpp
+    fileio/translators/translatorImagePlane.cpp
     fileio/translators/translatorMaterial.cpp
     fileio/translators/translatorMesh.cpp
     fileio/translators/translatorMesh_PrimVars.cpp
@@ -295,6 +296,7 @@ list(APPEND mayaUsdTranslators_headers
     fileio/translators/translatorCamera.h
     fileio/translators/translatorCurves.h
     fileio/translators/translatorGprim.h
+    fileio/translators/translatorImagePlane.h
     fileio/translators/translatorMaterial.h
     fileio/translators/translatorMesh.h
     fileio/translators/translatorNurbsPatch.h
@@ -450,6 +452,7 @@ target_link_libraries(${LIBRARY_NAME}
     ${MAYA_OpenMayaUI_LIBRARY}
     ar
     gf
+    glf
     hd
     hdx
     js
@@ -459,6 +462,7 @@ target_link_libraries(${LIBRARY_NAME}
     tf
     usd
     usdGeom
+    usdHydra
     usdImaging
     usdImagingGL
     usdLux

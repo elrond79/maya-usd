@@ -15,17 +15,21 @@ set(
 list(APPEND DEPENDANT_LIBRARIES 
     arch
     gf
+    hio
     kind
     sdf
     tf
     usd
     usdGeom
+    usdHydra
+    usdImaging
     usdLux
     usdRi
     usdShade
     usdSkel
     usdUtils
     vt
+    ${Boost_PYTHON_LIBRARY}
     ${MAYA_LIBRARIES}
     ${LIBRARY_NAME}
 )
@@ -34,6 +38,8 @@ list(APPEND source
     cameraReader.cpp
     cameraWriter.cpp
     fileTextureWriter.cpp
+    imagePlaneReader.cpp
+    imagePlaneWriter.cpp
     instancerWriter.cpp
     jointWriter.cpp
     lightReader.cpp
