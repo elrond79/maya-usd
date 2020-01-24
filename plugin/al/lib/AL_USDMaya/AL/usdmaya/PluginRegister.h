@@ -16,9 +16,6 @@
 #pragma once
 #include "pxr/pxr.h"
 #include "pxr/imaging/glf/glew.h"
-#include "pxr/imaging/glf/contextCaps.h"
-#include "pxr/imaging/glf/glContext.h"
-
 #include "AL/maya/utils/CommandGuiHelper.h"
 #include "AL/maya/utils/MenuBuilder.h"
 #include "AL/usdmaya/Global.h"
@@ -214,6 +211,11 @@ MStatus registerPlugin(AFnPlugin& plugin)
     MGlobal::setOptionVarValue("AL_usdmaya_pushToPrim", false);
   }
 
+  if(!MGlobal::optionVarExists("AL_usdmaya_ignoreLockPrims"))
+  {
+    MGlobal::setOptionVarValue("AL_usdmaya_ignoreLockPrims", false);
+  }
+
   MStatus status;
 
   // gpuCachePluginMain used as an example.
@@ -338,17 +340,20 @@ MStatus registerPlugin(AFnPlugin& plugin)
   AL::maya::utils::MenuBuilder::addEntry("USD/Animated Geometry/Connect selected meshes to USD (animated)", "AL_usdmaya_meshAnimImport");
   AL::maya::utils::MenuBuilder::addEntry("USD/Selection Enabled", "optionVar -iv \\\"AL_usdmaya_selectionEnabled\\\" #1", true, MGlobal::optionVarIntValue("AL_usdmaya_selectionEnabled"));
   AL::maya::utils::MenuBuilder::addEntry("USD/Enable pushToPrim", "optionVar -iv \\\"AL_usdmaya_pushToPrim\\\" #1", true, MGlobal::optionVarIntValue("AL_usdmaya_pushToPrim"));
+  AL::maya::utils::MenuBuilder::addEntry("USD/Selection Ignore Lock Prims Enabled", "optionVar -iv \\\"AL_usdmaya_ignoreLockPrims\\\" #1", true, MGlobal::optionVarIntValue("AL_usdmaya_ignoreLockPrims"));
   CHECK_MSTATUS(AL::maya::utils::MenuBuilder::generatePluginUI(plugin, "AL_usdmaya"));
   AL::usdmaya::Global::onPluginLoad();
 
   // Force all plugins to be loaded at startup time. Unless we load plugins upfront
   // options will not be registered until the start of import or export, and won't be available in the GUI
+  const TfType& translatorType = TfType::Find<AL::usdmaya::fileio::translators::TranslatorBase>();
   PlugPluginPtrVector plugins = PlugRegistry::GetInstance().GetAllPlugins();
   for(auto& plugin : plugins)
   {
-    if(!plugin->IsLoaded())
+    if(!plugin->IsLoaded() && plugin->DeclaresType(translatorType, true))
       plugin->Load();
   }
+
   return status;
 }
 

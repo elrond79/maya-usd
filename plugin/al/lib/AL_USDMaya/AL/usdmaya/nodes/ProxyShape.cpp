@@ -486,6 +486,7 @@ bool ProxyShape::getRenderAttris(UsdImagingGLRenderParams& attribs, const MHWRen
   const float complexities[] = {1.05f, 1.15f, 1.25f, 1.35f, 1.45f, 1.55f, 1.65f, 1.75f, 1.9f}; 
   attribs.complexity = complexities[complexityPlug().asInt()];
   attribs.showGuides = drawGuidePurposePlug().asBool();
+  attribs.showProxy = drawProxyPurposePlug().asBool();
   attribs.showRender = drawRenderPurposePlug().asBool();
   return true;
 }
@@ -536,7 +537,7 @@ ProxyShape::ProxyShape()
     constructExcludedPrims();
   };
 
-  m_findUnselectablePrims.preIteration = [this]() {
+  m_findUnselectablePrims.preIteration = []() {
 
   };
   m_findUnselectablePrims.iteration = [this]
@@ -621,30 +622,6 @@ ProxyShape::~ProxyShape()
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-static const char* const rotate_order_strings[] =
-{
-  "xyz",
-  "yzx",
-  "zxy",
-  "xzy",
-  "yxz",
-  "zyx",
-  0
-};
-
-//----------------------------------------------------------------------------------------------------------------------
-static const int16_t rotate_order_values[] =
-{
-  0,
-  1,
-  2,
-  3,
-  4,
-  5,
-  -1
-};
-
-//----------------------------------------------------------------------------------------------------------------------
 MStatus ProxyShape::initialise()
 {
   TF_DEBUG(ALUSDMAYA_EVALUATION).Msg("ProxyShape::initialise\n");
@@ -672,8 +649,9 @@ MStatus ProxyShape::initialise()
 
     inheritInt32Attr("complexity", kCached | kConnectable | kReadable | kWritable | kAffectsAppearance | kKeyable | kStorable);
     // outStageData attribute already added in base class.
-    inheritBoolAttr("displayGuides", kCached | kKeyable | kWritable | kAffectsAppearance | kStorable);
-    inheritBoolAttr("displayRenderGuides", kCached | kKeyable | kWritable | kAffectsAppearance | kStorable);
+    inheritBoolAttr("drawGuidePurpose", kCached | kKeyable | kWritable | kAffectsAppearance | kStorable);
+    inheritBoolAttr("drawProxyPurpose", kCached | kKeyable | kWritable | kAffectsAppearance | kStorable);
+    inheritBoolAttr("drawRenderPurpose", kCached | kKeyable | kWritable | kAffectsAppearance | kStorable);
     m_unloaded = addBoolAttr("unloaded", "ul", false, kCached | kKeyable | kWritable | kAffectsAppearance | kStorable);
     m_serializedTrCtx = addStringAttr("serializedTrCtx", "srtc", kReadable|kWritable|kStorable|kHidden);
 
@@ -1258,12 +1236,22 @@ void ProxyShape::variantSelectionListener(SdfNotice::LayersDidChange const& noti
 // nodes based on the contents of the new variant selection.
 {
   if(MFileIO::isReadingFile())
-  {
     return;
-  }
 
+  if (!m_stage)
+    return;
+
+  const SdfLayerHandleVector stack = m_stage->GetLayerStack();
+
+#if USD_VERSION_NUM > 1911
+  TF_FOR_ALL(itr, notice.GetChangeListVec())
+#else
   TF_FOR_ALL(itr, notice.GetChangeListMap())
+#endif
   {
+    if (std::find(stack.begin(), stack.end(), itr->first) == stack.end())
+      continue;
+
     TF_FOR_ALL(entryIter, itr->second.GetEntryList())
     {
       const SdfPath &path = entryIter->first;
@@ -1469,6 +1457,13 @@ void ProxyShape::loadStage()
           stageId = StageCache::Get().Insert(m_stage);
           outputInt32Value(dataBlock, m_stageCacheId, stageId.ToLongInt());
 
+          // Set the stage in datablock so it's ready in case it needs to be accessed
+          MObject data;
+          MayaUsdStageData* usdStageData = createData<MayaUsdStageData>(MayaUsdStageData::mayaTypeId, data);
+          usdStageData->stage = m_stage;
+          usdStageData->primPath = m_path;
+          outputDataValue(dataBlock, outStageData(), usdStageData);
+          
           // Set the edit target to the session layer so any user interaction will wind up there
           m_stage->SetEditTarget(m_stage->GetSessionLayer());
           // Save the initial edit target
@@ -1819,6 +1814,15 @@ void ProxyShape::findSelectablePrims()
   }
 
   m_findUnselectablePrims.postIteration();
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+void ProxyShape::copyInternalData(MPxNode* srcNode)
+{
+  // On duplication, the ProxyShape has a null stage, and m_filePathDirty is
+  // false, even if the file path attribute is set.  We must ensure the next
+  // call to computeOutStageData() calls loadStage().
+  m_filePathDirty = true;
 }
 
 //----------------------------------------------------------------------------------------------------------------------

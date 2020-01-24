@@ -79,7 +79,6 @@ target_include_directories(${PXR_PACKAGE}
 PRIVATE
     ${GTEST_INCLUDE_DIRS}
     ${MAYA_INCLUDE_DIRS}
-    ${MAYAUSD_INCLUDE_DIR}
     "../../lib/AL_USDMaya"    
     "../../schemas"
     ${MAYATEST_INCLUDE_LOCATION}
@@ -111,16 +110,16 @@ endif()
 install(TARGETS
     ${PXR_PACKAGE}
     LIBRARY
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/plugin
+        DESTINATION ${AL_INSTALL_PREFIX}/plugin
     RUNTIME
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/plugin
+        DESTINATION ${AL_INSTALL_PREFIX}/plugin
 )
 
 add_test(
     NAME TestAL_USDMaya
     COMMAND
         ${CMAKE_CURRENT_SOURCE_DIR}/run_mayaplugin_tests.sh
-            ${CMAKE_INSTALL_PREFIX}/${INSTALL_DIR_SUFFIX}
+            ${AL_INSTALL_PREFIX}
             ${USD_LIBRARY_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}
 )

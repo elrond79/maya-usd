@@ -22,6 +22,7 @@ pxr_shared_library(${PXR_PACKAGE}
         ${MAYA_OpenMaya_LIBRARY}
         ${MAYA_OpenMayaAnim_LIBRARY}
         ${MAYA_OpenMayaRender_LIBRARY}
+        ${MAYA_OpenMayaUI_LIBRARY}
         mayaUsd
 
     INCLUDE_DIRS
@@ -32,47 +33,8 @@ pxr_shared_library(${PXR_PACKAGE}
         api.h
 
     PUBLIC_CLASSES
-        adaptor
-        blockSceneModificationContext
-        diagnosticDelegate
         editUtil
-        hdImagingShape
-        jobArgs
-        meshUtil
-        pointBasedDeformerNode
-        primReader
-        primReaderArgs
-        primReaderContext
-        primReaderRegistry
-        primWriter
-        primWriterArgs
-        primWriterContext
-        primWriterRegistry
-        readUtil
-        roundTripUtil
-        shaderWriter
-        shadingModeExporter
-        shadingModeExporterContext
-        shadingModeImporter
-        shadingModeRegistry
-        shadingUtil
-        stageNode
-        transformWriter
-        translatorCamera
-        translatorCurves
-        translatorGprim
-        translatorMaterial
-        translatorMesh
         translatorModelAssembly
-        translatorNurbsPatch
-        translatorPrim
-        translatorRfMLight
-        translatorSkel
-        translatorUtil
-        translatorXformable
-        writeJobContext
-        writeUtil
-        xformStack
 
         exportCommand
         exportTranslator
@@ -81,52 +43,18 @@ pxr_shared_library(${PXR_PACKAGE}
         listShadingModesCommand
         proxyShape
         referenceAssembly
-        undoHelperCommand
-
-        chaser
-        chaserRegistry
-
-        userTaggedAttribute
 
     PRIVATE_CLASSES
-        fallbackPrimReader
-        functorPrimReader
-        functorPrimWriter
-        instancedNodeWriter
-        modelKindProcessor
-        readJob
-        registryHelper
-        skelBindingsProcessor
-        writeJob
-
-    PRIVATE_HEADERS
-        shadingModePxrRis_rfm_map.h
+        readJobWithSceneAssembly
+        instancerShapeAdapterWithSceneAssembly
 
     CPPFILES
-        shadingModeDisplayColor.cpp
-        shadingModePxrRis.cpp
-        shadingModeUseRegistry.cpp
-        translatorMesh_PrimVars.cpp
-        translatorMesh_SubDiv.cpp
-        translatorXformable_decompose.cpp
         readJob_ImportWithProxies.cpp
 
     PYMODULE_CPPFILES
         module.cpp
         wrapAssembly.cpp
-        wrapBlockSceneModificationContext.cpp
-        wrapColorSpace.cpp
-        wrapDiagnosticDelegate.cpp
         wrapEditUtil.cpp
-        wrapMeshUtil.cpp
-        wrapQuery.cpp
-        wrapReadUtil.cpp
-        wrapRoundTripUtil.cpp
-        wrapStageCache.cpp
-        wrapAdaptor.cpp
-        wrapUserTaggedAttribute.cpp
-        wrapWriteUtil.cpp
-        wrapXformStack.cpp
 
     PYMODULE_FILES
         __init__.py
@@ -168,6 +96,7 @@ pxr_test_scripts(
         testenv/testUsdExportPointInstancer.py
         testenv/testUsdExportPref.py
         testenv/testUsdExportRenderLayerMode.py
+        testenv/testUsdExportRoot.py
         testenv/testUsdExportRfMLight.py
         testenv/testUsdExportSelection.py
         testenv/testUsdExportShadingInstanced.py
@@ -192,8 +121,8 @@ pxr_test_scripts(
         testenv/testUsdImportUVSets.py
         testenv/testUsdImportXforms.py
         testenv/testUsdMayaAdaptor.py
-        testenv/testUsdMayaAdaptorMetadata.py
         testenv/testUsdMayaAdaptorGeom.py
+        testenv/testUsdMayaAdaptorMetadata.py
         testenv/testUsdMayaAppDir.py
         testenv/testUsdMayaBlockSceneModificationContext.py
         testenv/testUsdMayaDiagnosticDelegate.py
@@ -224,7 +153,7 @@ pxr_install_test_dir(
     SRC testenv/PointBasedDeformerNodeTest
     DEST testPointBasedDeformerNode
 )
-set(TEST_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}/plugin/pxr")
+set(TEST_INSTALL_PREFIX "${PXR_INSTALL_PREFIX}")
 
 # MAYA-96273 (closed as by design) says that to obtain correct mayapy exit
 # codes starting with Maya 2018.4, the MAYA_NO_STANDALONE_ATEXIT environment
@@ -609,6 +538,20 @@ pxr_register_test(testUsdExportRenderLayerMode
 #         MAYA_NO_STANDALONE_ATEXIT=1
 #         MAYA_APP_DIR=<PXR_TEST_DIR>/maya_profile
 # )
+
+pxr_install_test_dir(
+    SRC testenv/UsdExportRootTest
+    DEST testUsdExportRoot
+)
+pxr_register_test(testUsdExportRoot
+    CUSTOM_PYTHON "${MAYA_BASE_DIR}/bin/mayapy"
+    COMMAND "${CMAKE_INSTALL_PREFIX}/${INSTALL_DIR_SUFFIX}/tests/testUsdExportRoot"
+    TESTENV testUsdExportRoot
+    ENV
+        MAYA_PLUG_IN_PATH=${CMAKE_INSTALL_PREFIX}/third_party/maya/plugin
+        MAYA_SCRIPT_PATH=${CMAKE_INSTALL_PREFIX}/third_party/maya/share/usd/plugins/usdMaya/resources
+        MAYA_DISABLE_CIP=1
+)
 
 pxr_install_test_dir(
     SRC testenv/UsdExportSelectionTest
@@ -997,6 +940,50 @@ pxr_register_test(testUsdImportXforms
         MAYA_APP_DIR=<PXR_TEST_DIR>/maya_profile
 )
 
+pxr_register_test(testUsdMayaAdaptor
+    CUSTOM_PYTHON ${MAYA_PY_EXECUTABLE}
+    COMMAND "${TEST_INSTALL_PREFIX}/tests/testUsdMayaAdaptor"
+    TESTENV testUsdMayaAdaptor
+    ENV
+        MAYA_PLUG_IN_PATH=${TEST_INSTALL_PREFIX}/maya/plugin
+        MAYA_SCRIPT_PATH=${TEST_INSTALL_PREFIX}/maya/lib/usd/usdMaya/resources
+        MAYA_DISABLE_CIP=1
+        MAYA_NO_STANDALONE_ATEXIT=1
+        MAYA_APP_DIR=<PXR_TEST_DIR>/maya_profile
+)
+
+pxr_install_test_dir(
+    SRC testenv/UsdMayaAdaptorGeomTest
+    DEST testUsdMayaAdaptorGeom
+)
+pxr_register_test(testUsdMayaAdaptorGeom
+    CUSTOM_PYTHON ${MAYA_PY_EXECUTABLE}
+    COMMAND "${TEST_INSTALL_PREFIX}/tests/testUsdMayaAdaptorGeom"
+    TESTENV testUsdMayaAdaptorGeom
+    ENV
+        MAYA_PLUG_IN_PATH=${TEST_INSTALL_PREFIX}/maya/plugin
+        MAYA_SCRIPT_PATH=${TEST_INSTALL_PREFIX}/maya/lib/usd/usdMaya/resources
+        MAYA_DISABLE_CIP=1
+        MAYA_NO_STANDALONE_ATEXIT=1
+        MAYA_APP_DIR=<PXR_TEST_DIR>/maya_profile
+)
+
+pxr_install_test_dir(
+    SRC testenv/UsdMayaAdaptorMetadataTest
+    DEST testUsdMayaAdaptorMetadata
+)
+pxr_register_test(testUsdMayaAdaptorMetadata
+    CUSTOM_PYTHON ${MAYA_PY_EXECUTABLE}
+    COMMAND "${TEST_INSTALL_PREFIX}/tests/testUsdMayaAdaptorMetadata"
+    TESTENV testUsdMayaAdaptorMetadata
+    ENV
+        MAYA_PLUG_IN_PATH=${TEST_INSTALL_PREFIX}/maya/plugin
+        MAYA_SCRIPT_PATH=${TEST_INSTALL_PREFIX}/maya/lib/usd/usdMaya/resources
+        MAYA_DISABLE_CIP=1
+        MAYA_NO_STANDALONE_ATEXIT=1
+        MAYA_APP_DIR=<PXR_TEST_DIR>/maya_profile
+)
+
 pxr_install_test_dir(
     SRC testenv/UsdMayaAppDirTest
     DEST testUsdMayaAppDir
@@ -1083,6 +1070,18 @@ pxr_register_test(testUsdMayaProxyShape
         MAYA_APP_DIR=<PXR_TEST_DIR>/maya_profile
 )
 
+pxr_register_test(testUsdMayaReadWriteUtils
+    CUSTOM_PYTHON ${MAYA_PY_EXECUTABLE}
+    COMMAND "${TEST_INSTALL_PREFIX}/tests/testUsdMayaReadWriteUtils"
+    TESTENV testUsdMayaReadWriteUtils
+    ENV
+        MAYA_PLUG_IN_PATH=${TEST_INSTALL_PREFIX}/maya/plugin
+        MAYA_SCRIPT_PATH=${TEST_INSTALL_PREFIX}/maya/lib/usd/usdMaya/resources
+        MAYA_DISABLE_CIP=1
+        MAYA_NO_STANDALONE_ATEXIT=1
+        MAYA_APP_DIR=<PXR_TEST_DIR>/maya_profile
+)
+
 pxr_install_test_dir(
     SRC testenv/UsdMayaReferenceAssemblyEdits
     DEST testUsdMayaReferenceAssemblyEdits
@@ -1107,38 +1106,6 @@ pxr_register_test(testUsdMayaUserExportedAttributes
     CUSTOM_PYTHON ${MAYA_PY_EXECUTABLE}
     COMMAND "${TEST_INSTALL_PREFIX}/tests/testUsdMayaUserExportedAttributes"
     TESTENV testUsdMayaUserExportedAttributes
-    ENV
-        MAYA_PLUG_IN_PATH=${TEST_INSTALL_PREFIX}/maya/plugin
-        MAYA_SCRIPT_PATH=${TEST_INSTALL_PREFIX}/maya/lib/usd/usdMaya/resources
-        MAYA_DISABLE_CIP=1
-        MAYA_NO_STANDALONE_ATEXIT=1
-        MAYA_APP_DIR=<PXR_TEST_DIR>/maya_profile
-)
-
-pxr_install_test_dir(
-    SRC testenv/UsdMayaAdaptorGeomTest
-    DEST testUsdMayaAdaptorGeom
-)
-pxr_register_test(testUsdMayaAdaptorGeom
-    CUSTOM_PYTHON ${MAYA_PY_EXECUTABLE}
-    COMMAND "${TEST_INSTALL_PREFIX}/tests/testUsdMayaAdaptorGeom"
-    TESTENV testUsdMayaAdaptorGeom
-    ENV
-        MAYA_PLUG_IN_PATH=${TEST_INSTALL_PREFIX}/maya/plugin
-        MAYA_SCRIPT_PATH=${TEST_INSTALL_PREFIX}/maya/lib/usd/usdMaya/resources
-        MAYA_DISABLE_CIP=1
-        MAYA_NO_STANDALONE_ATEXIT=1
-        MAYA_APP_DIR=<PXR_TEST_DIR>/maya_profile
-)
-
-pxr_install_test_dir(
-    SRC testenv/UsdMayaAdaptorMetadataTest
-    DEST testUsdMayaAdaptorMetadata
-)
-pxr_register_test(testUsdMayaAdaptorMetadata
-    CUSTOM_PYTHON ${MAYA_PY_EXECUTABLE}
-    COMMAND "${TEST_INSTALL_PREFIX}/tests/testUsdMayaAdaptorMetadata"
-    TESTENV testUsdMayaAdaptorMetadata
     ENV
         MAYA_PLUG_IN_PATH=${TEST_INSTALL_PREFIX}/maya/plugin
         MAYA_SCRIPT_PATH=${TEST_INSTALL_PREFIX}/maya/lib/usd/usdMaya/resources

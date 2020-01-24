@@ -42,7 +42,7 @@ function(_copy_headers LIBRARY_NAME)
             add_custom_command(
                 OUTPUT ${outfile}
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${dir_to_create}"
-                COMMAND ${CMAKE_COMMAND} -Dinfile="${infile}" -Doutfile="${outfile}" -P "${PROJECT_SOURCE_DIR}/plugin/pxr/cmake/macros/copyHeaderForBuild.cmake"
+                COMMAND ${CMAKE_COMMAND} -Dinfile="${infile}" -Doutfile="${outfile}" -P "${PROJECT_SOURCE_DIR}/${INSTALL_DIR_SUFFIX}/cmake/macros/copyHeaderForBuild.cmake"
                 MAIN_DEPENDENCY "${infile}"
                 COMMENT "Copying ${f} ..."
                 VERBATIM
@@ -68,9 +68,13 @@ endfunction() # _copy_headers
 # our naming conventions, e.g. Tf
 function(_get_python_module_name LIBRARY_FILENAME MODULE_NAME)
     # Library names are either something like tf.so for shared libraries
-    # or _tf.so for Python module libraries. We want to strip the leading
-    # "_" off.
-    string(REPLACE "_" "" LIBNAME ${LIBRARY_FILENAME})
+    # or _tf.pyd/_tf_d.pyd for Python module libraries.
+    # We want to strip off the leading "_" and the trailing "_d".
+    set(LIBNAME ${LIBRARY_FILENAME})
+    if(IS_WINDOWS AND MAYAUSD_DEFINE_BOOST_DEBUG_PYTHON_FLAG)
+        string(REGEX REPLACE "_d$" "" LIBNAME ${LIBNAME})
+    endif()
+    string(REGEX REPLACE "^_" "" LIBNAME ${LIBNAME})
     string(SUBSTRING ${LIBNAME} 0 1 LIBNAME_FL)
     string(TOUPPER ${LIBNAME_FL} LIBNAME_FL)
     string(SUBSTRING ${LIBNAME} 1 -1 LIBNAME_SUFFIX)
@@ -140,8 +144,8 @@ function(_install_python LIBRARY_NAME)
             list(APPEND files_copied ${outfile})
             add_custom_command(OUTPUT ${outfile}
                 COMMAND
-                    ${PYTHON_EXECUTABLE}
-                    ${PROJECT_SOURCE_DIR}/plugin/pxr/cmake/macros/compilePython.py
+                    ${Python_EXECUTABLE}
+                    ${PROJECT_SOURCE_DIR}/${INSTALL_DIR_SUFFIX}/cmake/macros/compilePython.py
                     ${CMAKE_CURRENT_SOURCE_DIR}/${file}
                     ${CMAKE_CURRENT_SOURCE_DIR}/${file}
                     ${CMAKE_CURRENT_BINARY_DIR}/${file_we}.pyc
@@ -822,7 +826,12 @@ function(_pxr_python_module NAME)
         return()
     endif()
 
-    set(LIBRARY_NAME "_${NAME}")
+    if(IS_WINDOWS AND MAYAUSD_DEFINE_BOOST_DEBUG_PYTHON_FLAG)
+        # On Windows when compiling with debug python the library must be named with _d.
+        set(LIBRARY_NAME "_${NAME}_d")
+    else()
+        set(LIBRARY_NAME "_${NAME}")
+    endif()
 
     # Install .py files.
     if(args_PYTHON_FILES)
@@ -882,7 +891,7 @@ function(_pxr_python_module NAME)
     mayaUsd_add_rpath(rpath
         "${CMAKE_INSTALL_PREFIX}/${args_WRAPPED_LIB_INSTALL_PREFIX}")
     mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/lib")
-
+    
     # Add path for usd core
     if(WANT_USD_RELATIVE_PATH)
         mayaUsd_add_rpath(rpath "../../../../../USD/lib")
@@ -1227,7 +1236,7 @@ function(_pxr_library NAME)
     mayaUsd_init_rpath(rpath "${libInstallPrefix}")
 	# Add path for Pixar-specific Maya shared libraries.  As of 1-Aug-2019, 
 	# this is only the usdMaya shared library.
-    mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/${INSTALL_DIR_SUFFIX}/${PXR_INSTALL_SUBDIR}/lib")
+    mayaUsd_add_rpath(rpath "${PXR_INSTALL_PREFIX}/${PXR_INSTALL_SUBDIR}/lib")
 	# Add path for common mayaUsd shared libraries.  As of 1-Aug-2019, this is
 	# only the mayaUsd shared library.
     mayaUsd_add_rpath(rpath "${CMAKE_INSTALL_PREFIX}/lib")

@@ -329,6 +329,9 @@ public:
   /// display guide - sets shape to display geometry of purpose "guide". See <a href="https://github.com/PixarAnimationStudios/USD/blob/95eef7c9a6662a5362dfc312a186f50c58e27ecd/pxr/usd/lib/usdGeom/imageable.h#L165">imageable.h</a>
   AL_INHERIT_ATTRIBUTE(drawGuidePurpose);
 
+  /// display guide - sets shape to display geometry of purpose "proxy". See <a href="https://github.com/PixarAnimationStudios/USD/blob/95eef7c9a6662a5362dfc312a186f50c58e27ecd/pxr/usd/lib/usdGeom/imageable.h#L165">imageable.h</a>
+  AL_INHERIT_ATTRIBUTE(drawProxyPurpose);
+
   /// display render guide - sets shape to display geometry of purpose "render". See <a href="https://github.com/PixarAnimationStudios/USD/blob/95eef7c9a6662a5362dfc312a186f50c58e27ecd/pxr/usd/lib/usdGeom/imageable.h#L165">imageable.h</a>
   AL_INHERIT_ATTRIBUTE(drawRenderPurpose);
 
@@ -1005,6 +1008,7 @@ private:
   MStatus preEvaluation(const MDGContext & context, const MEvaluationNode& evaluationNode) override;
   void CacheEmptyBoundingBox(MBoundingBox&) override;
   UsdTimeCode GetOutputTime(MDataBlock) const override;
+  void copyInternalData(MPxNode* srcNode) override;
 
   //--------------------------------------------------------------------------------------------------------------------
   /// \name   Compute methods

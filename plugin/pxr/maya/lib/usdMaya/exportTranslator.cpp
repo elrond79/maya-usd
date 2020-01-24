@@ -15,10 +15,10 @@
 //
 #include "usdMaya/exportTranslator.h"
 
-#include "usdMaya/jobArgs.h"
-#include "usdMaya/shadingModeRegistry.h"
-#include "usdMaya/writeJob.h"
-#include "usdMaya/writeUtil.h"
+#include <mayaUsd/fileio/jobs/jobArgs.h>
+#include <mayaUsd/fileio/shading/shadingModeRegistry.h>
+#include <mayaUsd/fileio/jobs/writeJob.h>
+#include <mayaUsd/fileio/utils/writeUtil.h>
 
 #include <maya/MFileObject.h>
 #include <maya/MGlobal.h>
@@ -82,6 +82,18 @@ UsdMayaExportTranslator::writer(const MFileObject &file,
             }
             else if (argName == "filterTypes") {
                 theOption[1].split(',', filteredTypes);
+            }
+            else if (argName == "root") {
+                std::string exportRootPath = theOption[1].asChar();
+                userArgs[argName] = VtValue(exportRootPath);
+                if (!exportRootPath.empty()) {
+                    MDagPath rootDagPath;
+                    UsdMayaUtil::GetDagPathByName(exportRootPath, rootDagPath);
+                    if (!rootDagPath.isValid()){
+                        MGlobal::displayError(MString("Invalid dag path provided for root: ") + theOption[1]);
+                        return MS::kFailure;
+                    }
+                }
             }
             else {
                 if (argName == "shadingMode") {

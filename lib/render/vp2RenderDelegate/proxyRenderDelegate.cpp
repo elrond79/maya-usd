@@ -41,11 +41,11 @@
 #include <maya/MSelectionContext.h>
 
 #if defined(WANT_UFE_BUILD)
-#include "ufe/sceneItem.h"
-#include "ufe/runTimeMgr.h"
-#include "ufe/globalSelection.h"
-#include "ufe/observableSelection.h"
-#include "ufe/selectionNotification.h"
+#include <ufe/sceneItem.h>
+#include <ufe/runTimeMgr.h>
+#include <ufe/globalSelection.h>
+#include <ufe/observableSelection.h>
+#include <ufe/selectionNotification.h>
 #endif
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -604,7 +604,10 @@ void ProxyRenderDelegate::_UpdateSelectionStates()
     auto status = MHWRender::MGeometryUtilities::displayStatus(_proxyDagPath);
 
     const bool wasProxySelected = _isProxySelected;
-    _isProxySelected = ((status == MHWRender::kHilite) || (status == MHWRender::kLead));
+    _isProxySelected =
+        (status == MHWRender::kHilite) ||
+        (status == MHWRender::kLead) ||
+        (status == MHWRender::kActive);
 
     SdfPathVector rootPaths;
 

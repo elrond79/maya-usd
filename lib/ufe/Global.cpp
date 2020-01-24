@@ -22,10 +22,10 @@
 #include "UsdTransform3dHandler.h"
 #include "UsdSceneItemOpsHandler.h"
 
-#include "ufe/rtid.h"
-#include "ufe/runTimeMgr.h"
-#include "ufe/hierarchyHandler.h"
-#include "ufe/ProxyShapeHierarchyHandler.h"
+#include <ufe/rtid.h>
+#include <ufe/runTimeMgr.h>
+#include <ufe/hierarchyHandler.h>
+#include <ufe/ProxyShapeHierarchyHandler.h>
 
 #ifdef UFE_V2_FEATURES_AVAILABLE
 // Note: must come after include of ufe files so we have the define.
@@ -96,7 +96,7 @@ MStatus initialize()
 #ifdef UFE_V2_FEATURES_AVAILABLE
 	auto usdAttributesHandler = UsdAttributesHandler::create();
 	g_USDRtid = Ufe::RunTimeMgr::instance().register_(
-		kUSDRunTimeName, usdHierHandler, usdTrans3dHandler, usdSceneItemOpsHandler, usdAttributesHandler);
+		kUSDRunTimeName, usdHierHandler, usdTrans3dHandler, usdSceneItemOpsHandler, usdAttributesHandler, nullptr);
 #else
 	g_USDRtid = Ufe::RunTimeMgr::instance().register_(
 		kUSDRunTimeName, usdHierHandler, usdTrans3dHandler, usdSceneItemOpsHandler);

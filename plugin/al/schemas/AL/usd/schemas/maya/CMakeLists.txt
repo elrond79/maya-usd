@@ -1,16 +1,16 @@
 set(
     resources_install_path
-    ${CMAKE_INSTALL_PREFIX}/lib/usd/AL_USDMayaSchemas/resources
+    ${AL_INSTALL_PREFIX}/lib/usd/AL_USDMayaSchemas/resources
 )
 
 set(
     library_install_path
-    ${CMAKE_INSTALL_PREFIX}/lib
+    ${AL_INSTALL_PREFIX}/lib
 )
 
 set(
     bindings_install_path
-    ${CMAKE_INSTALL_PREFIX}/lib/python/AL/usd/schemas/maya
+    ${AL_INSTALL_PREFIX}/lib/python/AL/usd/schemas/maya
 )
 
 # Bake library name
@@ -36,7 +36,7 @@ configure_file (
 
 execute_process(
     COMMAND
-        ${PYTHON_EXECUTABLE}
+        ${Python_EXECUTABLE}
         ${USD_GENSCHEMA}
         ${CMAKE_CURRENT_BINARY_DIR}/schema.usda
         .
@@ -96,7 +96,14 @@ endif()
 # Python bindings
 ####################################################################################################
 
-add_library(_AL_USDMayaSchemas
+if(IS_WINDOWS AND MAYAUSD_DEFINE_BOOST_DEBUG_PYTHON_FLAG)
+    # On Windows when compiling with debug python the library must be named with _d.
+    set(PYTHON_LIBRARY_NAME _AL_USDMayaSchemas_d)
+else()
+    set(PYTHON_LIBRARY_NAME _AL_USDMayaSchemas)
+endif()
+
+add_library(${PYTHON_LIBRARY_NAME}
     SHARED
     module.cpp
     wrapModelAPI.cpp
@@ -105,28 +112,28 @@ add_library(_AL_USDMayaSchemas
     wrapFrameRange.cpp
 )
 
-target_compile_definitions(_AL_USDMayaSchemas
+target_compile_definitions(${PYTHON_LIBRARY_NAME}
     PRIVATE
         MFB_PACKAGE_NAME=AL_USDMayaSchemas
         MFB_ALT_PACKAGE_NAME=AL_USDMayaSchemas
         MFB_PACKAGE_MODULE=AL.usd.schemas.maya
 )
 
-set_target_properties(_AL_USDMayaSchemas
+set_target_properties(${PYTHON_LIBRARY_NAME}
     PROPERTIES 
         PREFIX ""
 )
 
 if(IS_WINDOWS)
-set_target_properties(_AL_USDMayaSchemas
-    PROPERTIES
-        SUFFIX ".pyd"
-)
+    set_target_properties(${PYTHON_LIBRARY_NAME}
+        PROPERTIES
+            SUFFIX ".pyd"
+    )
 endif()
 
-target_link_libraries(_AL_USDMayaSchemas AL_USDMayaSchemas ${DEPENDANT_LIBRARIES})
+target_link_libraries(${PYTHON_LIBRARY_NAME} AL_USDMayaSchemas ${DEPENDANT_LIBRARIES})
 
-install(TARGETS _AL_USDMayaSchemas
+install(TARGETS ${PYTHON_LIBRARY_NAME}
     LIBRARY
     DESTINATION ${bindings_install_path}
     RUNTIME
@@ -139,7 +146,7 @@ install(TARGETS _AL_USDMayaSchemas
 
 # configure_file has a nice feature where it will copy the __init__ file over when it gets modified, unlike file(COPY ...)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/__init__.py ${CMAKE_BINARY_DIR}/AL/usd/schemas/maya/__init__.py COPYONLY)
-install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -m compileall ${CMAKE_BINARY_DIR}/AL/usd/schemas/maya/__init__.py )")
+install(CODE "execute_process(COMMAND ${Python_EXECUTABLE} -m compileall ${CMAKE_BINARY_DIR}/AL/usd/schemas/maya/__init__.py )")
 
 string(REPLACE "/" ";" folderHierarchy "AL/usd/schemas/maya")
 
@@ -170,11 +177,11 @@ install(
     DIRECTORY
         ${CMAKE_BINARY_DIR}/AL
     DESTINATION
-        ${CMAKE_INSTALL_PREFIX}/lib/python
+        ${AL_INSTALL_PREFIX}/lib/python
 )
 
-install(CODE "message(STATUS \"POST INSTALL: Compiling python/pyc for ${CMAKE_INSTALL_PREFIX}/lib/python ... \")")
-install(CODE "execute_process(COMMAND ${PYTHON_EXECUTABLE} -m compileall ${CMAKE_INSTALL_PREFIX}/lib/python )")
+install(CODE "message(STATUS \"POST INSTALL: Compiling python/pyc for ${AL_INSTALL_PREFIX}/lib/python ... \")")
+install(CODE "execute_process(COMMAND ${Python_EXECUTABLE} -m compileall ${AL_INSTALL_PREFIX}/lib/python )")
 
 ####################################################################################################
 # Install public headers
@@ -188,7 +195,7 @@ install(
         api.h
         tokens.h
     DESTINATION
-        ${CMAKE_INSTALL_PREFIX}/include/AL/usd/schemas/maya
+        ${AL_INSTALL_PREFIX}/include/AL/usd/schemas/maya
 )
 
 ####################################################################################################

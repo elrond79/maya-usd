@@ -46,6 +46,10 @@ if (PXR_OVERRIDE_PLUGINPATH_NAME)
     _add_define("PXR_PLUGINPATH_NAME=${PXR_OVERRIDE_PLUGINPATH_NAME}")
 endif()
 
+if (DEFINED USD_VERSION_NUM)
+    _add_define("USD_VERSION_NUM=${USD_VERSION_NUM}")
+endif()
+
 set(_PXR_CXX_FLAGS ${_PXR_CXX_FLAGS} ${_PXR_CXX_WARNING_FLAGS})
 
 # CMake list to string.
@@ -58,6 +62,11 @@ else()
     set(PXR_PYTHON_SUPPORT_ENABLED "0")
 endif()
 
+if(MAYAUSD_DEFINE_BOOST_DEBUG_PYTHON_FLAG)
+    _add_define(BOOST_DEBUG_PYTHON)
+    _add_define(BOOST_LINKING_PYTHON)
+endif()
+
 # XXX: This is a workaround for an issue in which Python headers unequivocally
 # redefine macros defined in standard library headers. This behavior 
 # prevents users from running strict builds with PXR_STRICT_BUILD_MODE
@@ -67,4 +76,4 @@ endif()
 # https://docs.python.org/2/c-api/intro.html#include-files
 #
 # The long term plan is to adhere to the required behavior.
-include_directories(SYSTEM ${PYTHON_INCLUDE_DIR})
+include_directories(SYSTEM ${PYTHON_INCLUDE_DIRS})

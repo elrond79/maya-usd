@@ -26,7 +26,6 @@ target_link_libraries(${PXR_PACKAGE}
 target_include_directories(${PXR_PACKAGE}
     PRIVATE
         ${MAYA_INCLUDE_DIRS}
-        ${MAYAUSD_INCLUDE_DIR}
         "../../lib/AL_USDMaya"
 )
 
@@ -56,10 +55,10 @@ endif()
 install(TARGETS
     ${PXR_PACKAGE}
     LIBRARY
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/plugin
+        DESTINATION ${AL_INSTALL_PREFIX}/plugin
     RUNTIME
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/plugin
+        DESTINATION ${AL_INSTALL_PREFIX}/plugin
 )
 if(IS_WINDOWS)
-    install(FILES $<TARGET_PDB_FILE:${PXR_PACKAGE}> DESTINATION ${CMAKE_INSTALL_PREFIX}/plugin OPTIONAL)
+    install(FILES $<TARGET_PDB_FILE:${PXR_PACKAGE}> DESTINATION ${AL_INSTALL_PREFIX}/plugin OPTIONAL)
 endif()

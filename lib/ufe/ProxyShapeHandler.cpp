@@ -18,9 +18,9 @@
 
 #include "../utils/query.h"
 
-#include "maya/MGlobal.h"
-#include "maya/MString.h"
-#include "maya/MStringArray.h"
+#include <maya/MGlobal.h>
+#include <maya/MString.h>
+#include <maya/MStringArray.h>
 
 MAYAUSD_NS_DEF {
 namespace ufe {
@@ -49,6 +49,7 @@ std::vector<std::string> ProxyShapeHandler::getAllNames()
 	cmd.format("ls -type ^1s -long", fMayaUsdGatewayNodeType.c_str());
 	if (MS::kSuccess == MGlobal::executeCommand(cmd, result))
 	{
+		names.reserve(result.length());
 		for (MString& name : result)
 		{
 			names.push_back(name.asChar());
@@ -60,12 +61,8 @@ std::vector<std::string> ProxyShapeHandler::getAllNames()
 /*static*/
 UsdStageWeakPtr ProxyShapeHandler::dagPathToStage(const std::string& dagPath)
 {
-    UsdStageWeakPtr stagePtr;
-
-    if (UsdPrim usdPrim = UsdMayaQuery::GetPrim(dagPath))
-        stagePtr = usdPrim.GetStage();
-
-    return stagePtr;
+	auto prim = UsdMayaQuery::GetPrim(dagPath);
+	return prim ? prim.GetStage() : nullptr;
 }
 
 /*static*/
@@ -80,7 +77,9 @@ std::vector<UsdStageRefPtr> ProxyShapeHandler::getAllStages()
 	// Maya, so it requires the AL proxy shape inheritance from
 	// MayaUsdProxyShapeBase.  PPT, 12-Apr-2019.
 	std::vector<UsdStageRefPtr> stages;
-	for (const auto& name : getAllNames())
+	auto allNames = getAllNames();
+	stages.reserve(allNames.size());
+	for (const auto& name : allNames)
 	{
 		UsdStageWeakPtr stage = dagPathToStage(name);
 		if (stage)

@@ -4,13 +4,14 @@
 ####################################################################################################
 
 set(USDMAYA_UTILS_LIBRARY_NAME "AL_USDMayaUtils")
-set(MAYA_UTILS_LIBRARY_LOCATION ${CMAKE_INSTALL_PREFIX}/lib) 
+set(MAYA_UTILS_LIBRARY_LOCATION ${AL_INSTALL_PREFIX}/lib) 
 
 ####################################################################################################
 # Source 
 ####################################################################################################
 
 list(APPEND usdmaya_utils_headers
+    AnimationTranslator.h
     Api.h
     AttributeType.h
     DgNodeHelper.h
@@ -22,6 +23,7 @@ list(APPEND usdmaya_utils_headers
 )
 
 list(APPEND usdmaya_utils_source
+    AnimationTranslator.cpp
     AttributeType.cpp
     DgNodeHelper.cpp
     Utils.cpp
@@ -72,7 +74,7 @@ target_include_directories(${USDMAYA_UTILS_LIBRARY_NAME}
 
 # install the public headers
 install( FILES ${usdmaya_utils_headers}
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/include/AL/usdmaya/utils
+        DESTINATION ${AL_INSTALL_PREFIX}/include/AL/usdmaya/utils
 )
 
 # install the library

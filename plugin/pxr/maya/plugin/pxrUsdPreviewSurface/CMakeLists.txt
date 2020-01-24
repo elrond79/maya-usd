@@ -64,7 +64,7 @@ else()
         POST_BUILD
         COMMENT "Validating generated Maya fragments for ${PXR_PACKAGE}"
         COMMAND
-            ${PYTHON_EXECUTABLE}
+            ${Python_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/pxrUsdPreviewSurfaceGenFragments.py
                 ${SHADERS_LOCATION}/previewSurface.glslfx
                 --srcDir ${CMAKE_CURRENT_SOURCE_DIR}
@@ -81,7 +81,7 @@ pxr_install_test_dir(
     SRC testenv/PxrUsdPreviewSurfaceExportTest
     DEST testPxrUsdPreviewSurfaceExport
 )
-set(TEST_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}/plugin/pxr")
+set(TEST_INSTALL_PREFIX "${PXR_INSTALL_PREFIX}")
 
 pxr_register_test(testPxrUsdPreviewSurfaceExport
     CUSTOM_PYTHON ${MAYA_PY_EXECUTABLE}

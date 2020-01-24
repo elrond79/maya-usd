@@ -99,6 +99,9 @@ namespace {
         //! Color array to support per-instance color and selection highlight.
         MFloatArray _instanceColors;
 
+        //! If true, associate geometric buffers to the render item and trigger consolidation/instancing update
+        bool _geometryDirty{ false };
+
         //! Construct valid commit state
         CommitState(HdVP2DrawItem& item) : _drawItemData(item.GetRenderItemData())
         {}
@@ -301,7 +304,7 @@ namespace {
         const VtIntArray &faceVertexCounts = topology.GetFaceVertexCounts();
 
         unsigned int numIndex = 0;
-        for (int i = 0; i < faceVertexCounts.size(); i++)
+        for (std::size_t i = 0; i < faceVertexCounts.size(); i++)
         {
             numIndex += faceVertexCounts[i];
         }
@@ -314,7 +317,7 @@ namespace {
     {
         const VtIntArray &faceVertexCounts = topology.GetFaceVertexCounts();
         const int* currentFaceStart = topology.GetFaceVertexIndices().cdata();
-        for (int faceId = 0; faceId < faceVertexCounts.size(); faceId++)
+        for (std::size_t faceId = 0; faceId < faceVertexCounts.size(); faceId++)
         {
             int numVertexIndicesInFace = faceVertexCounts[faceId];
             if (numVertexIndicesInFace >= 2)
@@ -351,10 +354,6 @@ HdVP2Mesh::HdVP2Mesh(HdVP2RenderDelegate* delegate, const SdfPath& id, const Sdf
     const MHWRender::MVertexBufferDescriptor vbDesc(
         "", MHWRender::MGeometry::kPosition, MHWRender::MGeometry::kFloat, 3);
     _meshSharedData._positionsBuffer.reset(new MHWRender::MVertexBuffer(vbDesc));
-}
-
-//! \brief  Destructor
-HdVP2Mesh::~HdVP2Mesh() {
 }
 
 //! \brief  Synchronize VP2 state with scene delegate state based on dirty bits and representation
@@ -1305,6 +1304,12 @@ void HdVP2Mesh::_UpdateDrawItem(
         }
     }
 
+    stateToCommit._geometryDirty = (itemDirtyBits & (
+        HdChangeTracker::DirtyPoints |
+        HdChangeTracker::DirtyNormals |
+        HdChangeTracker::DirtyPrimvar |
+        HdChangeTracker::DirtyTopology));
+
     // Reset dirty bits because we've prepared commit state for this draw item.
     drawItem->ResetDirtyBits();
 
@@ -1377,10 +1382,7 @@ void HdVP2Mesh::_UpdateDrawItem(
 
         ProxyRenderDelegate& drawScene = param->GetDrawScene();
 
-        // Associate geometries with the render item only if the shader or the
-        // bounding box is changed.
-        if (stateToCommit._shader != nullptr ||
-            stateToCommit._boundingBox != nullptr) {
+        if (stateToCommit._geometryDirty || stateToCommit._boundingBox) {
             MHWRender::MVertexBufferArray vertexBuffers;
             vertexBuffers.addBuffer(kPositionsStr, positionsBuffer);
 
@@ -1398,6 +1400,10 @@ void HdVP2Mesh::_UpdateDrawItem(
                 }
             }
 
+            // The API call does three things:
+            // - Associate geometric buffers with the render item.
+            // - Update bounding box.
+            // - Trigger consolidation/instancing update.
             drawScene.setGeometryForRenderItem(*renderItem,
                 vertexBuffers, *indexBuffer, stateToCommit._boundingBox);
         }
