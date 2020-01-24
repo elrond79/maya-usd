@@ -102,6 +102,7 @@ void ProxyShape::deserialiseTranslatorContext()
 //----------------------------------------------------------------------------------------------------------------------
 AL_MAYA_DEFINE_NODE(ProxyShape, AL_USDMAYA_PROXYSHAPE, AL_usdmaya);
 
+MObject ProxyShape::m_pauseUpdates = MObject::kNullObj;
 MObject ProxyShape::m_populationMaskIncludePaths = MObject::kNullObj;
 MObject ProxyShape::m_excludedTranslatedGeometry = MObject::kNullObj;
 MObject ProxyShape::m_timeOffset = MObject::kNullObj;
@@ -685,6 +686,7 @@ MStatus ProxyShape::initialise()
     m_visibleInRefractions = ncProxyShape.attribute("visibleInRefractions");
 
     m_stageDataDirty = addBoolAttr("stageDataDirty", "sdd", false, kWritable | kAffectsAppearance | kInternal);
+    m_pauseUpdates = addBoolAttr("pauseUpdates", "pu", false, kReadable | kWritable | kConnectable | kAffectsAppearance | kInternal);
 
     m_stageCacheId = addInt32Attr("stageCacheId", "stcid", -1, kCached | kConnectable | kReadable | kInternal );
 
@@ -698,6 +700,7 @@ MStatus ProxyShape::initialise()
     AL_MAYA_CHECK_ERROR(attributeAffects(m_populationMaskIncludePaths, outStageData()), errorString);
     AL_MAYA_CHECK_ERROR(attributeAffects(m_stageDataDirty, outStageData()), errorString);
     AL_MAYA_CHECK_ERROR(attributeAffects(m_assetResolverConfig, outStageData()), errorString);
+    AL_MAYA_CHECK_ERROR(attributeAffects(m_pauseUpdates, outStageData()), errorString);
   }
   catch (const MStatus& status)
   {
@@ -923,7 +926,7 @@ void ProxyShape::serializeAll()
 //----------------------------------------------------------------------------------------------------------------------
 void ProxyShape::onObjectsChanged(UsdNotice::ObjectsChanged const& notice, UsdStageWeakPtr const& sender)
 {
-  if(MFileIO::isReadingFile() || AL::usdmaya::utils::BlockNotifications::isBlockingNotifications())
+  if(m_ignoringUpdates || MFileIO::isReadingFile() || AL::usdmaya::utils::BlockNotifications::isBlockingNotifications())
     return;
 
   if (!sender || sender != m_stage)
@@ -1235,7 +1238,7 @@ void ProxyShape::variantSelectionListener(SdfNotice::LayersDidChange const& noti
 // selection change happened.  If so, we trigger a ProxyShapePostLoadProcess() which will regenerate the alTransform
 // nodes based on the contents of the new variant selection.
 {
-  if(MFileIO::isReadingFile())
+  if(m_ignoringUpdates || MFileIO::isReadingFile())
     return;
 
   if (!m_stage)
@@ -1921,6 +1924,11 @@ MStatus ProxyShape::compute(const MPlug& plug, MDataBlock& dataBlock)
     MStatus status = computeOutputTime(MPlug(plug.node(), m_outTime), dataBlock, currentTime);
     return status == MS::kSuccess ? computeOutStageData(plug, dataBlock) : status;
   }
+  else
+  if(plug == m_pauseUpdates)
+  {
+    return outputBoolValue(dataBlock, m_pauseUpdates, m_ignoringUpdates);
+  }
   // Completely skip over parent class compute(), because it has inStageData
   // and inStageDataCached attributes we don't use.
   return MPxSurfaceShape::compute(plug, dataBlock);
@@ -1938,6 +1946,8 @@ bool ProxyShape::setInternalValue(const MPlug& plug, const MDataHandle& dataHand
 
   if(plug == filePath() || plug == m_assetResolverConfig || plug == m_stageCacheId)
   {
+    // TODO: make m_filePath updates respect m_ignoringUpdates
+
     m_filePathDirty = true;
     
     // can't use dataHandle.datablock(), as this is a temporary datahandle
@@ -1969,6 +1979,7 @@ bool ProxyShape::setInternalValue(const MPlug& plug, const MDataHandle& dataHand
   else
   if(plug == primPath())
   {
+    // TODO: make m_primPath updates respect m_ignoringUpdates
     clearBoundingBoxCache();
 
     // can't use dataHandle.datablock(), as this is a temporary datahandle
@@ -2012,6 +2023,17 @@ bool ProxyShape::setInternalValue(const MPlug& plug, const MDataHandle& dataHand
     {
       constructExcludedPrims();
     }
+  }
+  else
+  if(plug == m_pauseUpdates)
+  {
+    bool oldIgnoring = m_ignoringUpdates;
+    m_ignoringUpdates = dataHandle.asBool();
+    if(!m_ignoringUpdates && oldIgnoring)
+    {
+      // If we've turned off ignoring updates, we need to do a resync
+      resync(m_path);
+    }
     return true;
   }
   return false;
@@ -2020,7 +2042,11 @@ bool ProxyShape::setInternalValue(const MPlug& plug, const MDataHandle& dataHand
 //----------------------------------------------------------------------------------------------------------------------
 bool ProxyShape::getInternalValue(const MPlug& plug, MDataHandle& dataHandle)
 {
-  // Not sure if this is needed... don't know behavior of default implementation?
+  if(plug == m_pauseUpdates)
+  {
+    dataHandle.set(m_ignoringUpdates);
+    return true;
+  }
   return false;
 }
 
