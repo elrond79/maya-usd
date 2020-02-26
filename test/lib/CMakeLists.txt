@@ -33,6 +33,8 @@ foreach(script ${test_script_files})
     mayaUsd_add_pymodule_test(${target})
 endforeach()
 
+add_subdirectory(usd)
+
 if (UFE_FOUND)
     add_subdirectory(ufe)
 endif()
