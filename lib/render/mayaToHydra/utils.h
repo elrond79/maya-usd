@@ -39,7 +39,6 @@ using MtohRendererDescriptionVector = std::vector<MtohRendererDescription>;
 
 TfTokenVector MtohGetRendererPlugins();
 std::string MtohGetRendererPluginDisplayName(const TfToken& id);
-TfToken MtohGetDefaultRenderer();
 const MtohRendererDescriptionVector& MtohGetRendererDescriptions();
 
 PXR_NAMESPACE_CLOSE_SCOPE
