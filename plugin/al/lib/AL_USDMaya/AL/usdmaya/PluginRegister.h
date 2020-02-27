@@ -194,7 +194,7 @@ MStatus registerPlugin(AFnPlugin& plugin)
 
   if(!MGlobal::optionVarExists("AL_usdmaya_readAnimatedValues"))
   {
-    MGlobal::setOptionVarValue("AL_usdmaya_readAnimatedValues", false);
+    MGlobal::setOptionVarValue("AL_usdmaya_readAnimatedValues", true);
   }
 
   if(!MGlobal::optionVarExists("AL_usdmaya_selectionEnabled"))
