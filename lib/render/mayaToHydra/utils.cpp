@@ -57,18 +57,6 @@ std::string MtohGetRendererPluginDisplayName(const TfToken& id) {
     return pluginDesc.displayName;
 }
 
-TfToken MtohGetDefaultRenderer() {
-    const auto l = MtohGetRendererPlugins();
-    if (l.empty()) { return {}; }
-    const auto* defaultRenderer = getenv(MTOH_DEFAULT_RENDERER_PLUGIN_NAME);
-    if (defaultRenderer == nullptr) { return l[0]; }
-    const TfToken defaultRendererToken(defaultRenderer);
-    if (std::find(l.begin(), l.end(), defaultRendererToken) != l.end()) {
-        return defaultRendererToken;
-    }
-    return l[0];
-}
-
 const MtohRendererDescriptionVector& MtohGetRendererDescriptions() {
     static const auto ret = []() -> MtohRendererDescriptionVector {
         MtohRendererDescriptionVector r;
