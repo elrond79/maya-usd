@@ -407,15 +407,16 @@ public:
 
   /// \brief  provides access to the UsdStage that this proxy shape is currently representing. This will cause a compute
   ///         on the output stage.
-  /// \return the proxy shape
+  /// \return the stage for this proxy shape
   AL_USDMAYA_PUBLIC
   UsdStageRefPtr getUsdStage() const override;
 
   AL_USDMAYA_PUBLIC
   UsdTimeCode    getTime() const override;  
   
-  /// \brief  provides access to the UsdStage that this proxy shape is currently representing
-  /// \return the proxy shape
+  /// \brief  provides access to the UsdStage that this proxy shape is currently representing. This will NOT cause a compute
+  ///         on the output stage.
+  /// \return the stage for this proxy shape
   UsdStageRefPtr usdStage() const
     { return m_stage; }
 
