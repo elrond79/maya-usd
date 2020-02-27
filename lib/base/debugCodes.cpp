@@ -30,6 +30,8 @@ TF_REGISTRY_FUNCTION(TfDebug)
             "Debugging of translators.");
     TF_DEBUG_ENVIRONMENT_SYMBOL(USDMAYA_PROXYSHAPEBASE,
             "Base proxy shape evaluation");
+    TF_DEBUG_ENVIRONMENT_SYMBOL(USDMAYA_PROXYSHAPEBASE_BBOX,
+            "UsdMaya base proxy shape bounding box evaluation");
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

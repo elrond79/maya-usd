@@ -253,6 +253,7 @@ MayaUsdProxyShapeBase::initialize()
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
     numericAttrFn.setKeyable(true);
     numericAttrFn.setReadable(false);
+    numericAttrFn.setInternal(true);
     numericAttrFn.setAffectsAppearance(true);
     retValue = addAttribute(drawRenderPurposeAttr);
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
@@ -266,6 +267,7 @@ MayaUsdProxyShapeBase::initialize()
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
     numericAttrFn.setKeyable(true);
     numericAttrFn.setReadable(false);
+    numericAttrFn.setInternal(true);
     numericAttrFn.setAffectsAppearance(true);
     retValue = addAttribute(drawProxyPurposeAttr);
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
@@ -279,6 +281,7 @@ MayaUsdProxyShapeBase::initialize()
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
     numericAttrFn.setKeyable(true);
     numericAttrFn.setReadable(false);
+    numericAttrFn.setInternal(true);
     numericAttrFn.setAffectsAppearance(true);
     retValue = addAttribute(drawGuidePurposeAttr);
     CHECK_MSTATUS_AND_RETURN_IT(retValue);
@@ -641,13 +644,22 @@ MayaUsdProxyShapeBase::boundingBox() const
         _boundingBoxCache.find(currTime);
 
     if (cacheLookup != _boundingBoxCache.end()) {
+        TF_DEBUG(USDMAYA_PROXYSHAPEBASE_BBOX).Msg(
+            "Using cached bounding box: time %f\n", currTime.GetValue());
         return cacheLookup->second;
     }
 
     UsdPrim prim = _GetUsdPrim(dataBlock);
     if (!prim) {
+        TF_DEBUG(USDMAYA_PROXYSHAPEBASE_BBOX).Msg(
+            "Using empty bounding box because no prim found: time %f\n",
+            currTime.GetValue());
         return MBoundingBox();
     }
+
+    TF_DEBUG(USDMAYA_PROXYSHAPEBASE_BBOX).Msg(
+        "Using re-calculated bounding box: time %f\n",
+        currTime.GetValue());
 
     const UsdGeomImageable imageablePrim(prim);
 
@@ -697,6 +709,7 @@ MayaUsdProxyShapeBase::boundingBox() const
 void
 MayaUsdProxyShapeBase::clearBoundingBoxCache()
 {
+    TF_DEBUG(USDMAYA_PROXYSHAPEBASE_BBOX).Msg("Clearing bounding box cache\n");
     _boundingBoxCache.clear();
 }
 
@@ -737,6 +750,14 @@ MayaUsdProxyShapeBase::setInternalValue(const MPlug& plug, const MDataHandle& da
 {
     if (plug == excludePrimPathsAttr) {
         _IncreaseExcludePrimPathsVersion();
+    }
+    else if (plug == drawRenderPurposeAttr ||
+            plug == drawProxyPurposeAttr ||
+			plug == drawGuidePurposeAttr) {
+	    clearBoundingBoxCache();
+	    // clearBoundingBoxCache doesn't read any plugs, so we can just return
+	    // false, and rely on "normal" plug-setting behavior
+	    return false;
     }
     return MPxSurfaceShape::setInternalValue(plug, dataHandle);
 }
