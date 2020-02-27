@@ -31,8 +31,7 @@
 #include <vector>
 #include "AL/usdmaya/nodes/Engine.h"
 
-#include "pxr/imaging/hdx/pickTask.h"
-#include "pxr/imaging/hdx/taskController.h"
+#include "pxr/usdImaging/usdImaging/delegate.h"
 
 namespace AL {
 namespace usdmaya {
@@ -46,63 +45,82 @@ bool Engine::TestIntersectionBatch(
   const GfMatrix4d &projectionMatrix,
   const GfMatrix4d &worldToLocalSpace,
   const SdfPathVector& paths,
-  UsdImagingGLRenderParams params,
+  const UsdImagingGLRenderParams& params,
+  const TfToken &resolveMode,
   unsigned int pickResolution,
-  PathTranslatorCallback pathTranslator,
-  HitBatch *outHit) {
-  if (ARCH_UNLIKELY(_legacyImpl)) {
+  HdxPickHitVector& outHits)
+{
+  if (ARCH_UNLIKELY(_legacyImpl))
+  {
     return false;
   }
 
-  _UpdateHydraCollection(&_intersectCollection, paths, params);
+  TF_VERIFY(_delegate);
+  TF_VERIFY(_taskController);
+
+  // Forward scene materials enable option to delegate
+  _delegate->SetSceneMaterialsEnabled(params.enableSceneMaterials);
+
+  return TestIntersectionBatch(
+      viewMatrix,
+      projectionMatrix,
+      worldToLocalSpace,
+      paths,
+      params,
+      resolveMode,
+      pickResolution,
+      _intersectCollection,
+      *_taskController,
+      _engine,
+      outHits);
+}
+
+/*static*/
+bool Engine::TestIntersectionBatch(
+  const GfMatrix4d &viewMatrix,
+  const GfMatrix4d &projectionMatrix,
+  const GfMatrix4d &worldToLocalSpace,
+  const SdfPathVector& paths,
+  const UsdImagingGLRenderParams& params,
+  const TfToken &resolveMode,
+  unsigned int pickResolution,
+  HdRprimCollection& intersectCollection,
+  HdxTaskController& taskController,
+  HdEngine& engine,
+  HdxPickHitVector& outHits)
+{
+
+  _UpdateHydraCollection(&intersectCollection, paths, params);
 
   TfTokenVector renderTags;
   _ComputeRenderTags(params, &renderTags);
-  _taskController->SetRenderTags(renderTags);
-
-  HdxPickHitVector allHits;
+  taskController.SetRenderTags(renderTags);
 
   HdxRenderTaskParams hdParams = _MakeHydraUsdImagingGLRenderParams(params);
-  _taskController->SetRenderParams(hdParams);
+  taskController.SetRenderParams(hdParams);
 
 
   HdxPickTaskContextParams pickParams;
   pickParams.resolution = GfVec2i(pickResolution, pickResolution);
-  pickParams.hitMode = HdxPickTokens->hitAll;
-  pickParams.resolveMode = HdxPickTokens->resolveUnique;
+  if (resolveMode == HdxPickTokens->resolveNearestToCenter ||
+      resolveMode == HdxPickTokens->resolveNearestToCamera) {
+    pickParams.hitMode = HdxPickTokens->hitFirst;
+  } else {
+    pickParams.hitMode = HdxPickTokens->hitAll;
+  }
+  pickParams.resolveMode = resolveMode;
   pickParams.viewMatrix = worldToLocalSpace * viewMatrix;
   pickParams.projectionMatrix = projectionMatrix;
   pickParams.clipPlanes = params.clipPlanes;
-  pickParams.collection = _intersectCollection;
-  pickParams.outHits = &allHits;
+  pickParams.collection = intersectCollection;
+  pickParams.outHits = &outHits;
   VtValue vtPickParams(pickParams);
 
-  _engine.SetTaskContextData(HdxPickTokens->pickParams, vtPickParams);
-  auto pickingTasks = _taskController->GetPickingTasks();
-  _engine.Execute(_taskController->GetRenderIndex(), &pickingTasks);
+  engine.SetTaskContextData(HdxPickTokens->pickParams, vtPickParams);
+  auto pickingTasks = taskController.GetPickingTasks();
+  engine.Execute(taskController.GetRenderIndex(), &pickingTasks);
 
-  if (allHits.size() == 0) {
-    return false;
-  }
-
-  if (!outHit) {
-    return true;
-  }
-
-  for (const auto& hit : allHits) {
-    const SdfPath primPath = hit.objectId;
-    const SdfPath instancerPath = hit.instancerId;
-    const int instanceIndex = hit.instanceIndex;
-
-    HitInfo& info = (*outHit)[pathTranslator(primPath, instancerPath,
-                                             instanceIndex)];
-    info.worldSpaceHitPoint = GfVec3d(hit.worldSpaceHitPoint[0],
-                                      hit.worldSpaceHitPoint[1],
-                                      hit.worldSpaceHitPoint[2]);
-    info.hitInstanceIndex = instanceIndex;
-  }
-
-  return true;
+  return outHits.size() > 0;
 }
 
 }
