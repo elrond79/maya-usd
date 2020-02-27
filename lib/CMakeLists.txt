@@ -109,6 +109,7 @@ list(APPEND mayaUsd_src
     fileio/utils/readUtil.cpp
     fileio/utils/roundTripUtil.cpp
     fileio/utils/shadingUtil.cpp
+    fileio/utils/userAttributeWriterRegistry.cpp
     fileio/utils/userTaggedAttribute.cpp
     fileio/utils/writeUtil.cpp
     fileio/utils/xformStack.cpp
@@ -305,6 +306,7 @@ list(APPEND mayaUsdUtilsIO_headers
     fileio/utils/readUtil.h
     fileio/utils/roundTripUtil.h
     fileio/utils/shadingUtil.h
+    fileio/utils/userAttributeWriterRegistry.h
     fileio/utils/userTaggedAttribute.h
     fileio/utils/writeUtil.h
     fileio/utils/xformStack.h

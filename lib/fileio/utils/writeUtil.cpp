@@ -19,6 +19,7 @@
 #include "adaptor.h"
 #include "../../utils/colorSpace.h"
 #include "../translators/translatorUtil.h"
+#include "userAttributeWriterRegistry.h"
 #include "userTaggedAttribute.h"
 
 #include "pxr/base/gf/gamma.h"
@@ -965,11 +966,21 @@ UsdMayaWriteUtil::WriteUserExportedAttributes(
                                                                "user",
                                                                translateMayaDoubleToUsdSinglePrecision);
         } else {
-            usdAttr = UsdMayaWriteUtil::GetOrCreateUsdAttr(attrPlug,
-                                                              usdPrim,
-                                                              usdAttrName,
-                                                              true,
-                                                              translateMayaDoubleToUsdSinglePrecision);
+            auto attributeWriter = UsdMayaUserAttributeWriterRegistry::GetWriter(usdAttrType);
+            if (attributeWriter != nullptr) {
+                usdAttr = attributeWriter(attrPlug,
+                                          usdPrim,
+                                          usdAttrName,
+                                          "user",
+                                          translateMayaDoubleToUsdSinglePrecision);
+            } else {
+                usdAttr =
+                    UsdMayaWriteUtil::GetOrCreateUsdAttr(attrPlug,
+                                                         usdPrim,
+                                                         usdAttrName,
+                                                         true,
+                                                         translateMayaDoubleToUsdSinglePrecision);
+            }
         }
 
         if (usdAttr) {

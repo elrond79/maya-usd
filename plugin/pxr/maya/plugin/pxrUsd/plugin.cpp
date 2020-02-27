@@ -25,6 +25,7 @@
 #include "usdMaya/importCommand.h"
 #include "usdMaya/importTranslator.h"
 #include "usdMaya/listShadingModesCommand.h"
+#include "usdMaya/listUserAttributeWritersCommand.h"
 
 #include <mayaUsd/listeners/notice.h>
 #include <mayaUsd/nodes/pointBasedDeformerNode.h>
@@ -154,6 +155,14 @@ initializePlugin(MObject obj)
         status.perror("registerCommand usdListShadingModes");
     }
 
+    status = plugin.registerCommand(
+        "usdListUserAttributeWriters",
+        usdListUserAttributeWriters::creator);
+
+    if (!status) {
+        status.perror("registerCommand usdListUserAttributeWriters");
+    }
+
     status = UsdMayaUndoHelperCommand::initialize(plugin);
     if (!status) {
         status.perror(std::string("registerCommand ").append(
@@ -237,6 +246,11 @@ uninitializePlugin(MObject obj)
     status = plugin.deregisterCommand("usdListShadingModes");
     if (!status) {
         status.perror("deregisterCommand usdListShadingModes");
+    }
+
+    status = plugin.deregisterCommand("usdListUserAttributeWriters");
+    if (!status) {
+        status.perror("deregisterCommand usdListUserAttributeWriters");
     }
 
     status = UsdMayaUndoHelperCommand::finalize(plugin);
