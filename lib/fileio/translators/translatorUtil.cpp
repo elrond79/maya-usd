@@ -21,7 +21,7 @@
 #include "../primReaderContext.h"
 #include "translatorXformable.h"
 #include "../../utils/util.h"
-#include "../utils/xformStack.h"
+#include "mayaUsd/fileio/utils/xformStack.h"
 
 #include "pxr/usd/sdf/schema.h"
 #include "pxr/usd/usd/prim.h"

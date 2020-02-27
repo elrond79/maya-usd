@@ -24,6 +24,8 @@
 #include "maya/MObjectHandle.h"
 #include "maya/MPxTransform.h"
 
+PXR_NAMESPACE_USING_DIRECTIVE
+
 namespace AL {
 namespace usdmaya {
 namespace nodes {
@@ -79,8 +81,6 @@ class TransformationMatrix;
 ///            well. If however localTranslateOffset is not (0,0,0), then the behaviour of the rotate tool is a little odd.
 ///            Really this should be taken into account within the AL::usdmaya::nodes::TransformationMatrix::rotateBy and
 ///            AL::usdmaya::nodes::TransformationMatrix::rotateTo methods.
-///         -# If the usd prim xform stack has only one pivot, any separate modifications of
-///            scale/rotate pivot in maya will result in an undefined behavior.
 /// \ingroup nodes
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -115,6 +115,8 @@ public:
   //--------------------------------------------------------------------------------------------------------------------
   /// \name Methods
   //--------------------------------------------------------------------------------------------------------------------
+
+  void setPrim(const UsdPrim& prim) override;
 
   const MObject getProxyShape() const override
     { return proxyShapeHandle.object(); }

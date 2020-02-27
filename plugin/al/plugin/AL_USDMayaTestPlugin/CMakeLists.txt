@@ -9,9 +9,9 @@ target_sources(${TARGET_NAME}
         plugin.cpp
         AL/maya/test_DiffCore.cpp
         AL/maya/test_EventHandler.cpp
-        AL/maya/test_MatrixToSRT.cpp
         AL/maya/test_MayaEventManager.cpp
         AL/usdmaya/commands/test_ExportCommands.cpp
+        AL/usdmaya/commands/test_ImportCommands.cpp
         AL/usdmaya/commands/test_InternalProxySelection.cpp
         AL/usdmaya/commands/test_LayerCommands.cpp
         AL/usdmaya/commands/test_LayerManagerCommands.cpp

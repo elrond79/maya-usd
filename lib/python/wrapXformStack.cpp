@@ -14,7 +14,7 @@
 // limitations under the License.
 //
 #include "pxr/pxr.h"
-#include "../fileio/utils/xformStack.h"
+#include "mayaUsd/fileio/utils/xformStack.h"
 
 #include "pxr/base/tf/pyContainerConversions.h"
 #include "pxr/base/tf/pyEnum.h"

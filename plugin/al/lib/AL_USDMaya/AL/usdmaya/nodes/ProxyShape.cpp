@@ -950,7 +950,7 @@ void ProxyShape::onObjectsChanged(UsdNotice::ObjectsChanged const& notice, UsdSt
       BasicTransformationMatrix* tmm = tm->transform();
       if(!tmm)
         continue;
-      tmm->setPrim(newPrim, tm); // Might be (invalid/nullptr) but that's OK at least it won't crash
+      tm->setPrim(newPrim); // Might be (invalid/nullptr) but that's OK at least it won't crash
     }
     else
     {
@@ -1173,7 +1173,7 @@ void ProxyShape::validateTransforms()
         newPrim.GetMetadata(Metadata::transformType, &transformType);
         if(newPrim && transformType.empty())
         {
-          tm->transform()->setPrim(newPrim, tm);
+          tm->setPrim(newPrim);
         }
       }
       else
