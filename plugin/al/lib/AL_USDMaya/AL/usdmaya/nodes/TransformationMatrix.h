@@ -338,7 +338,7 @@ class TransformationMatrix
   /// \brief  pushes any modifications on the matrix back onto the UsdPrim
   void pushToPrim();
 
-  void notifyProxyShapeOfRedraw();
+  void notifyProxyShapeOfRedraw(GfMatrix4d& oldMatrix, bool oldResetsStack);
 
   /// \brief  sets this xform to match the given matrix
   void setFromMatrix(const MMatrix& m);

@@ -2072,7 +2072,7 @@ MStatus TransformationMatrix::setRotateOrientation(const MEulerRotation& euler, 
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-void TransformationMatrix::notifyProxyShapeOfRedraw()
+void TransformationMatrix::notifyProxyShapeOfRedraw(GfMatrix4d& oldMatrix, bool oldResetsStack)
 {
   // Anytime we update the xform, we need to tell the proxy shape that it
   // needs to update it's bounding box cache and redraw itself
@@ -2090,10 +2090,6 @@ void TransformationMatrix::notifyProxyShapeOfRedraw()
         MFnDependencyNode proxyMfn(proxyObj);
         if (proxyMfn.typeId() == ProxyShape::kTypeId)
         {
-          GfMatrix4d oldMatrix;
-          bool oldResetsStack;
-          m_xform.GetLocalTransformation(&oldMatrix, &oldResetsStack, getTimeCode());
-
           // We check that the matrix actually HAS changed, as this function will be
           // called when, ie, pushToPrim is toggled, which often happens on node
           // creation, when nothing has actually changed
@@ -2509,7 +2505,7 @@ void TransformationMatrix::pushToPrim()
       }
     }
   }
-  notifyProxyShapeOfRedraw();
+  notifyProxyShapeOfRedraw(oldMatrix, oldResetsStack);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
