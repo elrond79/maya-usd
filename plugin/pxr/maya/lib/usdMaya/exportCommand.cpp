@@ -17,6 +17,7 @@
 
 #include <mayaUsd/fileio/shading/shadingModeRegistry.h>
 #include <mayaUsd/utils/util.h>
+#include <mayaUsd/fileio/jobs/jobArgs.h>
 #include <mayaUsd/fileio/jobs/writeJob.h>
 #include <mayaUsd/fileio/utils/writeUtil.h>
 
@@ -150,6 +151,9 @@ MSyntax UsdMayaExportCommand::createSyntax()
     syntax.addFlag("-v",
                    UsdMayaJobExportArgsTokens->verbose.GetText(),
                    MSyntax::kNoArg);
+    syntax.addFlag("-rt" ,
+                   UsdMayaJobExportArgsTokens->root.GetText(),
+                   MSyntax::kString);
 
     // These are additional flags under our control.
     syntax.addFlag("-fr", "-frameRange", MSyntax::kDouble, MSyntax::kDouble);
@@ -191,6 +195,37 @@ try
     // Check that all flags were valid
     if (status != MS::kSuccess) {
         return status;
+    }
+
+    if (argData.isFlagSet("shadingMode")) {
+        MString stringVal;
+        argData.getFlagArgument("shadingMode", 0, stringVal);
+        TfToken shadingMode(stringVal.asChar());
+
+        if (!shadingMode.IsEmpty() &&
+            UsdMayaShadingModeRegistry::GetInstance().GetExporter(shadingMode) == nullptr &&
+            shadingMode != UsdMayaShadingModeTokens->none) {
+            MGlobal::displayError(TfStringPrintf(
+                    "No shadingMode '%s' found. "
+                    "Setting shadingMode='none'", 
+                    shadingMode.GetText()).c_str());
+            return MS::kFailure;
+        }
+    }
+
+    if (argData.isFlagSet("root")) {
+        MString stringVal;
+        argData.getFlagArgument("root", 0, stringVal);
+        std::string rootPath = stringVal.asChar();
+
+        if (!rootPath.empty()) {
+            MDagPath rootDagPath;
+            UsdMayaUtil::GetDagPathByName(rootPath, rootDagPath);
+            if (!rootDagPath.isValid()) {
+                MGlobal::displayError(MString("Invalid dag path provided for root: ") + stringVal);
+                return MS::kFailure;
+            }
+        }
     }
 
     // Read all of the dictionary args first.

@@ -83,7 +83,31 @@ UsdMayaExportTranslator::writer(const MFileObject &file,
             else if (argName == "filterTypes") {
                 theOption[1].split(',', filteredTypes);
             }
+            else if (argName == "root") {
+                std::string exportRootPath = theOption[1].asChar();
+                userArgs[argName] = VtValue(exportRootPath);
+                if (!exportRootPath.empty()) {
+                    MDagPath rootDagPath;
+                    UsdMayaUtil::GetDagPathByName(exportRootPath, rootDagPath);
+                    if (!rootDagPath.isValid()){
+                        MGlobal::displayError(MString("Invalid dag path provided for root: ") + theOption[1]);
+                        return MS::kFailure;
+                    }
+                }
+            }
             else {
+                if (argName == "shadingMode") {
+                    TfToken shadingMode(theOption[1].asChar());
+                    if (!shadingMode.IsEmpty() &&
+                        UsdMayaShadingModeRegistry::GetInstance().GetExporter(shadingMode) == nullptr &&
+                        shadingMode != UsdMayaShadingModeTokens->none) {
+                        MGlobal::displayError(TfStringPrintf(
+                                "No shadingMode '%s' found. "
+                                "Setting shadingMode='none'", 
+                                shadingMode.GetText()).c_str());
+                        return MS::kFailure;
+                    }
+                }
                 userArgs[argName] = UsdMayaUtil::ParseArgumentValue(
                     argName, theOption[1].asChar(),
                     UsdMayaJobExportArgs::GetDefaultDictionary());

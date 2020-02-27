@@ -71,6 +71,23 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+namespace {
+    static
+    bool _HasParent(const MDagPath& curDagPath, const MDagPath& curLeafDagPath) {
+        MFnDagNode dagNode(curDagPath);
+        if (dagNode.inUnderWorld()) {
+            for (auto dagPathCopy = curDagPath; dagPathCopy.pathCount(); dagPathCopy.pop()) {
+                MFnDagNode dagNodeCopy(dagPathCopy);
+                if (!dagNodeCopy.inUnderWorld()) {
+                    return dagNodeCopy.hasParent(curLeafDagPath.node());
+                }
+            }
+            return false;
+        } else {
+            return dagNode.hasParent(curLeafDagPath.node());
+        }
+    }
+}
 
 UsdMaya_WriteJob::UsdMaya_WriteJob(const UsdMayaJobExportArgs& iArgs)
     : mJobCtx(iArgs),
@@ -292,6 +309,12 @@ UsdMaya_WriteJob::_BeginWriting(const std::string& fileName, bool append)
                                         defaultLayer.name(), false, false);
     }
 
+    MDagPath curLeafDagPath;
+    MDagPath rootDagPath;
+    if (!mJobCtx._exportRootSdfPath.IsEmpty()) {
+        UsdMayaUtil::GetDagPathByName(mJobCtx.mArgs.exportRootPath, rootDagPath);
+    }
+
     // Pre-process the argument dagPath path names into two sets. One set
     // contains just the arg dagPaths, and the other contains all parents of
     // arg dagPaths all the way up to the world root. Partial path names are
@@ -312,6 +335,24 @@ UsdMaya_WriteJob::_BeginWriting(const std::string& fileName, bool append)
         std::string curDagPathStr(curDagPath.partialPathName(&status).asChar());
         if (status != MS::kSuccess) {
             continue;
+        }
+
+        // If we have an export root, check if this arg is either a parent or
+        // child of the root - if it's not, we ignore it
+        if (rootDagPath.isValid()) {
+            // If it's a parent of the exportRoot, we not only keep this node, we set
+            // it to be the curLeafDagPath - normally, we would set this while iterating
+            // through the dag tree, with itDag below, but if we have an export root,
+            // we might skip beneath all the mArgs.dagPaths... but we still
+            // need to set curLeafDagPath so we know we're underneath a
+            // requested path
+            if (MFnDagNode(rootDagPath).hasParent(curDagPath.node())) {
+                curLeafDagPath = curDagPath;
+            }
+            else if (!(rootDagPath == curDagPath
+                       || MFnDagNode(curDagPath).hasParent(rootDagPath.node()))) {
+                continue;
+            }
         }
 
         argDagPaths.insert(curDagPathStr);
@@ -344,8 +385,25 @@ UsdMaya_WriteJob::_BeginWriting(const std::string& fileName, bool append)
 
     // Now do a depth-first traversal of the Maya DAG from the world root.
     // We keep a reference to arg dagPaths as we encounter them.
-    MDagPath curLeafDagPath;
-    for (MItDag itDag(MItDag::kDepthFirst, MFn::kInvalid); !itDag.isDone(); itDag.next()) {
+    MItDag itDag(MItDag::kDepthFirst, MFn::kInvalid);
+
+    if (rootDagPath.isValid()) {
+        // Check if there was no intersection between the given arg paths
+        // and the root dag path, and error if they don't overlap at all
+        if (argDagPaths.size() == 0) {
+            MGlobal::displayError("Given export root was neither a parent or child of"
+                    " any of the items to export; export aborting");
+            return false;
+        }
+
+        // If a root is specified, start iteration there
+        MDagPath rootDagPath;
+        UsdMayaUtil::GetDagPathByName(mJobCtx.mArgs.exportRootPath, rootDagPath);
+        itDag.reset(rootDagPath, MItDag::kDepthFirst, MFn::kInvalid);
+    }
+
+    itDag.traverseUnderWorld(true);
+    for (; !itDag.isDone(); itDag.next()) {
         MDagPath curDagPath;
         itDag.getPath(curDagPath);
         std::string curDagPathStr(curDagPath.partialPathName().asChar());
@@ -354,13 +412,21 @@ UsdMaya_WriteJob::_BeginWriting(const std::string& fileName, bool append)
             // This dagPath is a parent of one of the arg dagPaths. It should
             // be included in the export, but not necessarily all of its
             // children should be, so we continue to traverse down.
+            if (rootDagPath.isValid() && curDagPath.length() > 0){
+                // However if an export root is specified, we skip any dag
+                // parents that are above that root.
+                SdfPath sdfDagPath = SdfPath(UsdMayaUtil::MDagPathToUsdPath(curDagPath, false, mJobCtx.mArgs.stripNamespaces));
+                if (mJobCtx._exportRootSdfPath.GetCommonPrefix(sdfDagPath) !=
+                    mJobCtx._exportRootSdfPath) {
+                    continue;
+                }
+            }
         } else if (argDagPaths.find(curDagPathStr) != argDagPaths.end()) {
             // This dagPath IS one of the arg dagPaths. It AND all of its
             // children should be included in the export.
             curLeafDagPath = curDagPath;
-        } else if (!MFnDagNode(curDagPath).hasParent(curLeafDagPath.node())) {
-            // This dagPath is not a child of one of the arg dagPaths, so prune
-            // it and everything below it from the traversal.
+        } else if (!_HasParent(curDagPath, curLeafDagPath)) {
+            // This dagPath is not a child (or in the underworld of a child) of one of the arg dagPaths, so prune
             itDag.prune();
             continue;
         }

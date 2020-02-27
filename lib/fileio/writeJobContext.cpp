@@ -69,16 +69,26 @@ TF_DEFINE_PRIVATE_TOKENS(
 
 namespace {
 
-inline
-SdfPath
-_GetRootOverridePath(const UsdMayaJobExportArgs& args, const SdfPath& path)
+inline SdfPath
+_GetRootOverridePath(
+    const UsdMayaJobExportArgs& args,
+    const SdfPath& exportRootSdfPath,
+    const SdfPath& path)
 {
-    if (!args.usdModelRootOverridePath.IsEmpty() && !path.IsEmpty()) {
-        return path.ReplacePrefix(
-            path.GetPrefixes()[0],
-            args.usdModelRootOverridePath);
+    if (!path.IsEmpty()) {
+        SdfPath newPath = path;
+        if (!args.usdModelRootOverridePath.IsEmpty()) {
+            newPath = path.ReplacePrefix(
+                    path.GetPrefixes()[0],
+                    args.usdModelRootOverridePath);
+        }
+        if (!exportRootSdfPath.IsEmpty()) {
+            newPath = path.ReplacePrefix(
+                    exportRootSdfPath.GetParentPath(),
+                    SdfPath::AbsoluteRootPath());
+        }
+        return newPath;
     }
-
     return path;
 }
 
@@ -91,6 +101,19 @@ UsdMayaWriteJobContext::UsdMayaWriteJobContext(const UsdMayaJobExportArgs& args)
     : mArgs(args),
       _skelBindingsProcessor(new UsdMaya_SkelBindingsProcessor())
 {
+    if (!mArgs.exportRootPath.empty()) {
+        MDagPath rootDagPath;
+        UsdMayaUtil::GetDagPathByName(mArgs.exportRootPath, rootDagPath);
+        if (rootDagPath.isValid()){
+            SdfPath rootSdfPath;
+            UsdMayaUtil::GetDagPathByName(mArgs.exportRootPath, rootDagPath);
+            _exportRootSdfPath = UsdMayaUtil::MDagPathToUsdPath(rootDagPath, false, mArgs.stripNamespaces);
+        } else {
+            TF_RUNTIME_ERROR("Invalid dag path provided for root: %s"
+                    , mArgs.exportRootPath.c_str());
+            mArgs.exportRootPath = "";
+        }
+    }
 }
 
 UsdMayaWriteJobContext::~UsdMayaWriteJobContext() = default;
@@ -162,6 +185,20 @@ UsdMayaWriteJobContext::IsMergedTransform(const MDagPath& path) const
 SdfPath
 UsdMayaWriteJobContext::ConvertDagToUsdPath(const MDagPath& dagPath) const
 {
+    if (dagPath.pathCount() > 1) {
+        // Join together all the sub-paths - that way we (potentially) collapse
+        // each shape at the end of each underworld sub-path
+        SdfPath currentPath = SdfPath::AbsoluteRootPath();
+        MDagPath subPath;
+        for (size_t i = 0, n = dagPath.pathCount(); i < n; ++i) {
+            dagPath.getPath(subPath, i);
+            currentPath = ConvertDagToUsdPath(subPath).ReplacePrefix(
+                    SdfPath::AbsoluteRootPath(),
+                    currentPath);
+        }
+        return currentPath;
+    }
+
     SdfPath path = UsdMayaUtil::MDagPathToUsdPath(
             dagPath, false, mArgs.stripNamespaces);
 
@@ -181,7 +218,7 @@ UsdMayaWriteJobContext::ConvertDagToUsdPath(const MDagPath& dagPath) const
                 mParentScopePath);
     }
 
-    return _GetRootOverridePath(mArgs, path);
+    return _GetRootOverridePath(mArgs, _exportRootSdfPath, path);
 }
 
 UsdMayaWriteJobContext::_ExportAndRefPaths
@@ -203,9 +240,9 @@ UsdMayaWriteJobContext::_GetInstanceMasterPaths(const MDagPath& instancePath) co
     fullName = TfStringReplace(fullName, "_", "__");
     // This should make a valid path component.
     fullName = TfMakeValidIdentifier(fullName);
-
     const SdfPath path = _GetRootOverridePath(
-            mArgs, mInstancesPrim.GetPath().AppendChild(TfToken(fullName)));
+            mArgs, _exportRootSdfPath,
+            mInstancesPrim.GetPath().AppendChild(TfToken(fullName)));
 
     // In Maya, you can directly instance gprims or transforms, but
     // UsdImaging really wants you to instance at the transform level.
@@ -331,7 +368,8 @@ UsdMayaWriteJobContext::_NeedToTraverse(const MDagPath& curDag) const
         return false;
     }
 
-    if (!UsdMayaUtil::isWritable(ob)) {
+    MFnDagNode dagNode(curDag);
+    if (!dagNode.inUnderWorld() && !UsdMayaUtil::isWritable(ob)) {
         return false;
     }
 
@@ -495,6 +533,14 @@ UsdMayaWriteJobContext::CreatePrimWriter(
         if (dagPath.length() == 0u) {
             // This is the world root node. It can't have a prim writer.
             return nullptr;
+        } else if (dagPath.pathCount() > 1) {
+            MDagPath underworldLeafPath;
+            dagPath.getPath(underworldLeafPath, dagPath.pathCount() - 1);
+            if (underworldLeafPath.length() == 0)
+            {
+                // This is an underworld "root" node - also skip
+                return nullptr;
+            }
         }
 
         if (writePath.IsEmpty()) {
